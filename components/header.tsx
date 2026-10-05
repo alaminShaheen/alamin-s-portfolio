@@ -32,7 +32,7 @@ export function Header() {
 						{site.descriptions}
 					</TextFlip>
 				</span>
-				<span className="inline-flex gap-2">
+				<span className="inline-flex gap-2 items-center">
 					<MapPinHouse size={18} /> {site.location}
 				</span>
 			</p>
