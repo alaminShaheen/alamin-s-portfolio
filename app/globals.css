@@ -1,0 +1,110 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme inline {
+  --font-mono: var(--font-jetbrains-mono), monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-accent: #ff6b35;
+}
+
+:root {
+  --background: #111;
+  --foreground: #d1d5db;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+}
+
+.shiki,
+.shiki span {
+  color: var(--shiki-dark) !important;
+  background-color: var(--shiki-dark-bg) !important;
+  font-style: var(--shiki-dark-font-style) !important;
+  font-weight: var(--shiki-dark-font-weight) !important;
+  text-decoration: var(--shiki-dark-text-decoration) !important;
+}
+
+.prose a:not(.anchor) {
+  @apply text-accent no-underline hover:underline;
+}
+
+.prose a.anchor {
+  @apply relative no-underline;
+}
+
+.prose a.anchor::before {
+  @apply absolute -left-4 opacity-0 transition-opacity duration-200 content-['#'] text-accent;
+}
+
+.prose a.anchor:hover::before,
+.prose a.anchor:focus-visible::before {
+  @apply opacity-100;
+}
+
+.prose a.anchor:focus-visible {
+  @apply outline-none;
+}
+
+.prose pre {
+  @apply overflow-x-auto border border-neutral-800 bg-[#111] my-4 rounded-sm;
+}
+
+.prose code:not(pre code) {
+  @apply px-1 py-0.5 text-sm border border-gray-700 rounded text-gray-200;
+}
+
+.prose code:not(pre code)::before,
+.prose code:not(pre code)::after {
+  content: none;
+}
+
+.prose pre code {
+  @apply p-4 block bg-transparent;
+  border: initial;
+  line-height: 1.6;
+}
+
+.prose code span {
+  @apply font-medium text-gray-200;
+}
+
+/* Prose typography — tuned mono for long-form reading */
+.prose-tuned-mono {
+  font-size: 0.9375rem; /* 15px — slightly smaller mono reads better */
+  line-height: 1.85;
+  letter-spacing: 0.01em;
+}
+
+.prose-tuned-mono :where(p):not(:where([class~="not-prose"],[class~="not-prose"] *)) {
+  margin-top: 1.5em;
+  margin-bottom: 1.5em;
+}
+
+.prose-tuned-mono :where(h2):not(:where([class~="not-prose"],[class~="not-prose"] *)) {
+  margin-top: 2.5em;
+  letter-spacing: -0.02em;
+}
+
+.prose-tuned-mono :where(h3):not(:where([class~="not-prose"],[class~="not-prose"] *)) {
+  margin-top: 2em;
+  letter-spacing: -0.01em;
+}
+
+.prose-tuned-mono :where(li):not(:where([class~="not-prose"],[class~="not-prose"] *)) {
+  margin-top: 0.75em;
+  margin-bottom: 0.75em;
+}
+
+.prose-tuned-mono :where(blockquote):not(:where([class~="not-prose"],[class~="not-prose"] *)) {
+  font-style: normal;
+  border-left-color: #ff6b35;
+  padding-left: 1.5em;
+}
+
+/* accent glow for * markers and accent links */
+.accent-glow {
+  text-shadow: 0 0 10px rgba(255, 107, 53, 0.2);
+}
