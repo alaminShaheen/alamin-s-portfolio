@@ -15,7 +15,7 @@ export const site: Content = {
 	// SEO copy — meta description, OG description, RSS channel description.
 	description: "Developer and software engineer.",
 	// Rotating display lines on the homepage.
-	descriptions: ["fullstack software engineer at astralform", "building applications with code", "fullstack frontend software engineer", "i love binging and watching anime!"],
+	descriptions: ["software engineer at astralform", "building applications with code", "fullstack frontend software engineer", "i love binging and watching anime!"],
 	// Shown under your name on the homepage.
 	location: "oshawa, ontario, canada",
 
