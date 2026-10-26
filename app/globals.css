@@ -8,6 +8,10 @@
   --color-accent: #ff6b35;
 }
 
+.font-incognito {
+  font-family: var(--font-incognito), system-ui, sans-serif;
+}
+
 :root {
   --background: #111;
   --foreground: #d1d5db;

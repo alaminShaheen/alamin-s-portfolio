@@ -1,5 +1,6 @@
 import type {Metadata} from "next"
 import {JetBrains_Mono} from "next/font/google"
+import {incognito} from "./fonts/fonts"
 import "./globals.css"
 import {Navbar} from "../components/navbar"
 import {site} from "@/content/site"
@@ -46,7 +47,7 @@ export default function RootLayout({
 	return (
 		<html lang="en">
 		<body
-			className={`${jetbrainsMono.variable} antialiased min-h-screen font-mono`}
+			className={`${jetbrainsMono.variable} ${incognito.variable} antialiased min-h-screen font-mono`}
 		>
 		<div className="max-w-4xl mx-auto px-5 sm:px-4 py-8">
 			<Navbar/>

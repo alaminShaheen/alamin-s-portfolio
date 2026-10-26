@@ -21,7 +21,7 @@ export function Header() {
 
 	return (
 		<header className="mb-16 space-y-4">
-			<h1 className="text-5xl font-semibold tracking-tight text-white text-balance mb-4 animate-fade-in">
+			<h1 className="text-5xl font-semibold font-incognito tracking-tight text-white text-balance mb-4 animate-fade-in">
 				<span className="inline-block">
 				  <ScrambleText text={site.name.toLowerCase()}/>
 				</span>

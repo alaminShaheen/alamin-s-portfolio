@@ -23,7 +23,7 @@ export function ProjectCard({
     <Link href={href} target="_blank" className="group block rounded-lg p-4 -mx-4 hover:bg-neutral-900/50">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <h3 className="text-xl font-semibold text-white group-hover:text-accent transition-colors">
+          <h3 className="text-xl font-semibold text-white group-hover:text-accent transition-colors font-incognito">
             {title}
           </h3>
           <p className="text-sm text-gray-500 mt-1">
