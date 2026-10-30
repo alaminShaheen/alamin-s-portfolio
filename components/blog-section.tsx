@@ -2,6 +2,7 @@ import Link from "next/link"
 import { ArrowUpRight } from "lucide-react"
 import { getPublishedPosts } from "@/lib/blog"
 import { formatDate } from "@/lib/utils"
+import { SectionHeading } from "@/components/section-heading"
 
 const posts = getPublishedPosts()
   .sort(
@@ -14,10 +15,7 @@ export function BlogSection() {
   return (
     <section className="mb-12 pt-10 border-t border-neutral-800 animate-fade-in-up">
       <div className="flex items-baseline justify-between mb-6">
-        <h2 className="text-2xl font-semibold flex items-center text-white">
-          <span className="text-accent accent-glow mr-2">*</span>
-          blog
-        </h2>
+        <SectionHeading size="md">blog</SectionHeading>
         <Link
           href="/blog"
           className="inline-flex items-center gap-1 text-sm text-accent hover:underline group"

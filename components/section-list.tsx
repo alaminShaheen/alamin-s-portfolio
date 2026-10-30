@@ -1,76 +1,72 @@
 import Link from "next/link"
-import { ArrowUpRight } from "lucide-react"
+import {ArrowUpRight} from "lucide-react"
 import {Work} from "@/app/types/Work";
 import {Project} from "@/app/types/Project";
+import {SectionHeading} from "@/components/section-heading";
 
 type SectionListProps = {
-  title: string
-  items: (Work | Project)[]
-  viewAllHref?: string
-  viewAllText?: string
-  showTitle?: boolean
-  showSectionBorder?: boolean
+	title: string
+	items: (Work | Project)[]
+	viewAllHref?: string
+	viewAllText?: string
+	showTitle?: boolean
+	showSectionBorder?: boolean
 }
 
-export function SectionList({
-  title,
-  items,
-  viewAllHref,
-  viewAllText,
-  showTitle = true,
-  showSectionBorder = true,
-}: SectionListProps) {
-  return (
-    <section className={`mb-12 animate-fade-in-up ${showSectionBorder ? "pt-10 border-t border-neutral-800" : ""}`}>
-      {showTitle && (
-        <div className="flex items-baseline justify-between mb-6">
-          <h2 className="text-3xl font-semibold flex items-center text-white font-incognito">
-            <span className="text-accent accent-glow mr-2 font-mono">*</span> {title}
-          </h2>
-          {viewAllHref && (
-            <Link
-              href={viewAllHref}
-              className="inline-flex items-center gap-1 text-sm text-accent hover:underline group"
-            >
-              {viewAllText}{" "}
-              <ArrowUpRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1 group-hover:-translate-y-1" />
-            </Link>
-          )}
-        </div>
-      )}
-      <div className="space-y-2">
-        {items.map((item) => (
-          <Link key={item.description} href={item.href} target="_blank" className="group block rounded-lg p-4 -mx-4 hover:bg-neutral-900/50">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <h3 className="text-xl font-incognito font-semibold text-white group-hover:text-accent transition-colors duration-200">
-                  {item.title}
-                </h3>
-                <p className="text-sm text-gray-500 mt-1">
-                  {item.role}
-                  {"period" in item && (
-                    <span className="text-gray-600"> · {item.period}</span>
-                  )}
-                  {"technologies" in item && item.technologies.length > 0 && (
-                      <span className="text-gray-600"> · {item.technologies.join(", ")}</span>
-                  )}
-                </p>
-                <p className="text-gray-300 mt-2 text-pretty">{item.description}</p>
-              </div>
-              <ArrowUpRight className="w-4 h-4 mt-1.5 text-gray-600 group-hover:text-accent transition-colors shrink-0" />
-            </div>
-          </Link>
-        ))}
-      </div>
-      {viewAllHref && !showTitle && (
-        <Link
-          href={viewAllHref}
-          className="inline-flex items-center gap-1 mt-6 text-accent hover:underline group"
-        >
-          {viewAllText}{" "}
-          <ArrowUpRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1 group-hover:-translate-y-1" />
-        </Link>
-      )}
-    </section>
-  )
+export function SectionList(props: SectionListProps) {
+	const {title, items, viewAllHref, viewAllText, showTitle = true, showSectionBorder = true,} = props;
+	return (
+		<section className={`mb-12 animate-fade-in-up ${showSectionBorder ? "pt-10 border-t border-neutral-800" : ""}`}>
+			{showTitle && (
+				<div className="flex items-baseline justify-between mb-6">
+					<SectionHeading size="lg">{title}</SectionHeading>
+					{viewAllHref && (
+						<Link
+							className="inline-flex items-center gap-1 text-sm text-accent hover:underline group"
+							href={viewAllHref}>
+							{viewAllText}{" "}
+							<ArrowUpRight
+								className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1 group-hover:-translate-y-1"/>
+						</Link>
+					)}
+				</div>
+			)}
+			<div className="space-y-2">
+				{items.map((item) => (
+					<Link key={item.description} href={item.href} target="_blank"
+						  className="group block rounded-lg p-4 -mx-4 hover:bg-neutral-900/50">
+						<div className="flex items-start justify-between gap-4">
+							<div className="min-w-0">
+								<h3 className="text-xl font-incognito font-semibold text-white group-hover:text-accent transition-colors duration-200">
+									{item.title}
+								</h3>
+								<p className="text-sm text-gray-500 mt-1">
+									{item.role}
+									{"period" in item && (
+										<span className="text-gray-600"> · {item.period}</span>
+									)}
+									{"technologies" in item && item.technologies.length > 0 && (
+										<span className="text-gray-600"> · {item.technologies.join(", ")}</span>
+									)}
+								</p>
+								<p className="text-gray-300 mt-2 text-pretty">{item.description}</p>
+							</div>
+							<ArrowUpRight
+								className="w-4 h-4 mt-1.5 text-gray-600 group-hover:text-accent transition-colors shrink-0"/>
+						</div>
+					</Link>
+				))}
+			</div>
+			{viewAllHref && !showTitle && (
+				<Link
+					href={viewAllHref}
+					className="inline-flex items-center gap-1 mt-6 text-accent hover:underline group"
+				>
+					{viewAllText}{" "}
+					<ArrowUpRight
+						className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1 group-hover:-translate-y-1"/>
+				</Link>
+			)}
+		</section>
+	)
 }
