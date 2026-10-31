@@ -1,4 +1,4 @@
-import { type MDXFileData } from "@/lib/blog"
+import { type MDXFileData, getPostUrl } from "@/lib/blog"
 import Link from "next/link"
 import { formatDate } from "@/lib/utils"
 
@@ -10,7 +10,7 @@ type PostItemProps = {
 export function PostItem({ post, isSelected }: PostItemProps) {
   return (
     <Link
-      href={`/blog/${post.slug}`}
+      href={getPostUrl(post)}
       prefetch={true}
       className={`group flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-4 rounded-lg p-3 -mx-3 transition-colors duration-200 ${
         isSelected

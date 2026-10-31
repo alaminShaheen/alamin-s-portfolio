@@ -90,6 +90,10 @@ export function getAdjacentPosts(slug: string): {
   }
 }
 
+export function getPostUrl(post: MDXFileData): string {
+  return `/blog/${post.slug}`
+}
+
 export function getReadingTime(content: string): string {
   const words = content.trim().split(/\s+/).length
   const minutes = Math.max(1, Math.round(words / 225))

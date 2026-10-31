@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { ArrowUpRight } from "lucide-react"
-import { getPublishedPosts } from "@/lib/blog"
+import { getPublishedPosts, getPostUrl } from "@/lib/blog"
 import { formatDate } from "@/lib/utils"
 import { SectionHeading } from "@/components/section-heading"
 
@@ -28,7 +28,7 @@ export function BlogSection() {
         {posts.map((post) => (
           <Link
             key={post.slug}
-            href={`/blog/${post.slug}`}
+            href={getPostUrl(post)}
             className="group flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-4"
           >
             <span className="text-sm text-gray-500 sm:w-28 shrink-0 tabular-nums">

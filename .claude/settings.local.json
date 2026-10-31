@@ -5,7 +5,17 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(npm search:*)",
       "Bash(mkdir:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(dir:*)",
+      "Bash(Remove-Item -Recurse -Force \"C:\\Users\\NEWEGG THANK YOU\\WebstormProjects\\alamin-s-portfolio\\app\\blog\\[slug]\")",
+      "Bash(npm run dev:*)",
+      "WebSearch",
+      "WebFetch(domain:www.animate-ui.com)",
+      "WebFetch(domain:v1.animate-ui.com)",
+      "WebFetch(domain:motion.dev)",
+      "Bash(taskkill /PID 18188 /F)",
+      "Bash(timeout /t 2 /nobreak)",
+      "Bash(taskkill:*)"
     ],
     "deny": [],
     "ask": []

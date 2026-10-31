@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import type { MDXFileData } from "@/lib/blog"
+import { getPostUrl } from "@/lib/blog"
 import { PostItem } from "./post-item"
 
 type PostsProps = {
@@ -63,7 +64,10 @@ export function Posts({ posts }: PostsProps) {
           return newIndex
         })
       } else if (isSearching && e.key === "Enter" && filteredPosts.length > 0) {
-        router.push(`/blog/${filteredPosts[selectedIndex].slug}`)
+        const post = filteredPosts[selectedIndex]
+        if (post) {
+          router.push(getPostUrl(post))
+        }
       }
     }
 
@@ -93,7 +97,7 @@ export function Posts({ posts }: PostsProps) {
               aria-controls="search-results"
               aria-activedescendant={
                 isSearching && filteredPosts.length > 0
-                  ? `post-${filteredPosts[selectedIndex].slug}`
+                  ? `post-${filteredPosts[selectedIndex]?.slug}`
                   : undefined
               }
             />

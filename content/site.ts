@@ -21,9 +21,10 @@ export const site: Content = {
 
 	bio: "i'm a passionate frontend focused fullstack software engineer from canada with 4.5 years of experience. i'm passionate about web development and software engineering. if i'm not coding, i'm probably playing dota, watching movies or binging anime.",
 
-	// Add { key: "b", label: "blog", href: "/blog" } to put the blog back in the nav.
 	nav: [
 		{key: "h", label: "home", href: "/"},
+		// {key: "b", label: "blog", href: "/blog"},
+		{key: "j", label: "journal", href: "/journal"},
 		{key: "w", label: "work", href: "/work"},
 		{key: "p", label: "projects", href: "/projects"},
 	],
@@ -81,11 +82,10 @@ export const site: Content = {
 		{title: "email", href: "mailto:alaminshaheen23@gmail.com"},
 		{title: "github", href: "https://github.com/alaminShaheen"},
 		{title: "linkedin", href: "https://www.linkedin.com/in/alaminshaheen/"},
-		// { title: "book a call", href: "https://cal.com/yourhandle" },
 	],
 	navItems: [
 		{key: "h", label: "home", href: "/"},
-		{key: "b", label: "blog", href: "/blog"},
+		// {key: "b", label: "blog", href: "/blog"},
 		{key: "w", label: "work", href: "/work"},
 		{key: "p", label: "projects", href: "/projects"},
 	]

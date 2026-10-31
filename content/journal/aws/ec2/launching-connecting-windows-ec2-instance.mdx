@@ -1,0 +1,147 @@
+---
+title: "Launching and Connecting to a Windows EC2 Instance"
+description: "Creating a Windows Server 2019 EC2 instance, connecting over RDP, decrypting the Administrator password with a .pem key, and changing the password after login."
+date: "2026-05-19"
+order: 1
+tags: ["aws", "ec2", "windows", "rdp", "lab"]
+---
+
+## Summary
+
+In this lab I created a Windows Server 2019 EC2 instance in AWS, connected to it using Remote Desktop (RDP), retrieved the initial Administrator password by decrypting it with my `.pem` key file, and then changed the Windows password after logging in.
+
+## Lab Environment
+
+| Setting | Value                                                   |
+| --- |---------------------------------------------------------|
+| Region | Canada (Central) `ca-central-1`                                 |
+| Instance name | `MyNewEC2Window`                                        |
+| AMI | Microsoft Windows Server 2019 Base (Free tier eligible) |
+| Instance type | `t3.micro` (2 vCPU, 1 GiB memory)                       |
+| Key pair | `demo` (RSA, `.pem`)                                    |
+| Network | Default VPC, subnet in `ap-south-1a`                    |
+| Security group | `launch-wizard-80` (RDP, TCP 3389)                      |
+| Storage | 30 GiB gp2 root volume                                  |
+
+---
+
+## Part 1: Launch the Instance
+
+### 1. Open EC2
+
+I searched for **EC2** in the AWS Console, opened the EC2 dashboard, went to **Instances**, and clicked **Launch instances**.
+
+### 2. Name the instance
+
+Under **Name and tags**, I entered the name `MyNewEC2Windows`.
+
+
+### 3. Choose the AMI (Amazon Machine Images)
+
+Under **Application and OS Images (Amazon Machine Image)**, I clicked **Browse more AMIs** and selected **Microsoft Windows Server 2019 Base** (Datacenter edition, English, 64-bit x86). Before selecting it, I checked that it was marked **Free tier eligible**.
+
+### 4. Choose the instance type
+
+I selected `t3.micro`, which provides 2 virtual CPUs and 1 GiB of RAM and is free tier eligible.
+
+### 5. Create a key pair
+
+Under **Key pair (login)**, I clicked **Create new key pair** and used these settings:
+
+- **Key pair name:** `demo`
+- **Key pair type:** RSA
+- **Private key file format:** `.pem`
+
+After clicking **Create key pair**, the `demo.pem` file downloaded automatically. I saved it somewhere safe, because AWS does not let you download it again and it is needed later to get the Windows password.
+
+### 6. Configure network settings
+
+I clicked **Edit** in the **Network settings** section.
+
+- **VPC:** I kept the default VPC.
+- **Subnet:** I selected the subnet in `ca-central-1a`. The Central region has three Availability Zones (`ca-central-1a`, `ca-central-1b`, `ca-central-1d`). If no subnet is chosen, AWS picks the Availability Zone automatically.
+- **Auto-assign public IP:** Enabled, so the instance can be reached from the internet.
+
+### 7. Configure the security group
+
+I chose **Create security group**. AWS gave it a default name (`launch-wizard-80`), which can be changed. For Windows instances, AWS adds an inbound rule for **RDP** by default:
+
+| Type | Protocol | Port | Source |
+| --- | --- | --- | --- |
+| RDP | TCP | 3389 | `0.0.0.0/0` (Anywhere) |
+
+Extra inbound rules can be added here if needed.
+
+### 8. Configure storage
+
+I kept the default **30 GiB gp2** root volume. The root volume is like the hard drive on a laptop: it is where the operating system is installed. Free tier accounts get up to 30 GB of EBS storage.
+
+### 9. Launch
+
+In the **Summary** panel, I left **Number of instances** at 1 and clicked **Launch instance**.
+
+### 10. Wait for status checks
+
+The instance showed **Running**, but the status check said **Initializing**. I waited until it changed to **3/3 checks passed** before connecting.
+
+---
+
+## Part 2: Connect Using RDP
+
+### 1. Download the RDP file
+
+I selected the instance, clicked **Connect**, opened the **RDP client** tab, and clicked **Download remote desktop file**. The page also shows the connection details:
+
+- **Public DNS:** `ec2-13-235-18-93.ap-south-1.compute.amazonaws.com`
+- **Username:** `Administrator`
+
+### 2. Open the RDP file
+
+I opened the downloaded `.rdp` file and clicked **Continue** on the trust prompt. The login window asked for the Administrator password.
+
+### 3. Get the Administrator password
+
+Back on the RDP client tab in the browser:
+
+1. Clicked **Get password**.
+2. Clicked **Upload private key file** and uploaded `demo.pem`.
+3. Clicked **Decrypt password**.
+4. Copied the decrypted password that appeared.
+
+### 4. Log in
+
+I pasted the password into the Remote Desktop login window and clicked **Connect**. The Windows Server desktop loaded, with the instance details (hostname, instance ID, IP addresses, instance size, Availability Zone) shown in the top-right corner.
+
+---
+
+## Part 3: Change the Windows Password
+
+The decrypted password is long and random, so I changed it to one I can remember for future logins.
+
+1. Clicked the **Start** (Windows) button and opened **Server Manager**.
+2. Clicked **Tools** → **Computer Management**.
+3. Went to **System Tools** → **Local Users and Groups** → **Users**.
+4. Right-clicked **Administrator** and selected **Set Password...**
+5. Entered and confirmed the new password.
+
+Next time I connect, I can log in with this new password instead of decrypting the original one.
+
+---
+
+## Key Takeaways
+
+- An **AMI** decides which operating system and software the instance starts with.
+- The **instance type** decides the CPU and memory (`t3.micro` = 2 vCPU, 1 GiB).
+- The **key pair** is required for Windows: the private `.pem` file decrypts the initial Administrator password.
+- The **security group** acts as a firewall; RDP needs inbound TCP port **3389** open.
+- The **root volume** is where the operating system is installed.
+- Choosing a **subnet** controls which Availability Zone the instance runs in.
+
+## Security Notes
+
+- Allowing RDP from `0.0.0.0/0` lets anyone on the internet attempt to log in. For real use, the source should be limited to **My IP**.
+- The `.pem` file and the decrypted password should never be shared or committed to a repository.
+
+## Cleanup
+
+To avoid charges after the lab, stop or terminate the instance from **Instance state** → **Terminate instance**, and delete the security group and key pair if they are no longer needed.

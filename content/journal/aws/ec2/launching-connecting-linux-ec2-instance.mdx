@@ -1,0 +1,148 @@
+---
+title: "Launching and Connecting to a Linux EC2 Instance"
+description: "Creating an Amazon Linux EC2 instance, configuring networking and a security group, creating a key pair, and connecting over SSH from the command line."
+date: "2026-05-19"
+order: 2
+tags: ["aws", "ec2", "linux", "ssh", "lab"]
+---
+
+## Summary
+
+In this lab I created an Amazon Linux EC2 instance in AWS, configured its networking and security group, created a key pair, and connected to the instance over SSH from the Windows Command Prompt using the `.pem` key file and the instance's public IP address.
+
+## Lab Environment
+
+| Setting | Value                                               |
+| --- |-----------------------------------------------------|
+| Region | Canada (Central) `ca-central-1`                              |
+| Instance name | `MyFirstLinux`                                      |
+| AMI | Amazon Linux 2023 (Quick Start, Free tier eligible) |
+| Instance type | `t3.micro` (2 vCPU, 1 GiB memory)                   |
+| Key pair | `demo` (RSA, `.pem`)                                |
+| Network | Default VPC, subnet in `ca-central-1a`                |
+| Security group | New security group (SSH, TCP 22)                    |
+| Storage | 8 GiB gp3 root volume                               |
+| Login user | `ec2-user`                                          |
+
+---
+
+## Part 1: Launch the Instance
+
+### 1. Open EC2
+
+I searched for **EC2** in the AWS Console, opened the EC2 dashboard, went to **Instances**, and clicked **Launch instances**.
+
+### 2. Name the instance
+
+Under **Name and tags**, I entered the name `MyFirstLinux`.
+
+### 3. Choose the AMI
+
+Under **Application and OS Images (Amazon Machine Image)**, I selected **Amazon Linux** from the **Quick Start** tab. Unlike the [Windows lab](/journal/aws/ec2/launching-connecting-windows-ec2-instance), I didn't need to browse more AMIs, since Amazon Linux is the default option.
+
+> **Note:** When selecting an AMI, note down the default SSH username displayed on the AMI details page. Different AMIs use different usernames: Amazon Linux uses `ec2-user`, Ubuntu uses `ubuntu`, Debian uses `admin`, and so on. We'll need this username to connect via SSH later.
+
+### 4. Choose the instance type
+
+I selected `t3.micro`, which provides 2 virtual CPUs and 1 GiB of RAM and is free tier eligible. On-demand Linux pricing for this type is lower than Windows because there is no Windows license cost.
+
+### 5. Create a key pair
+
+Under **Key pair (login)**, I clicked **Create new key pair** and used these settings:
+
+- **Key pair name:** `demo`
+- **Key pair type:** RSA
+- **Private key file format:** `.pem` (for use with OpenSSH)
+
+After clicking **Create key pair**, the `demo.pem` file downloaded automatically to my **Downloads** folder. I saved it, because it is the only way to log in to the instance over SSH and AWS will not let me download it again.
+
+### 6. Configure network settings
+
+I clicked **Edit** in the **Network settings** section.
+
+- **VPC:** I kept the default VPC.
+- **Subnet:** I selected the subnet in `ca-central-1a`. The Mumbai region has three Availability Zones (`ca-central-1a`, `ca-central-1b`, `ca-central-1d`). If no subnet is chosen, AWS picks the Availability Zone automatically.
+- **Auto-assign public IP:** Enabled, so I can reach the instance from my computer.
+
+### 7. Configure the security group
+
+I chose **Create security group** and kept the name AWS generated (it can be changed if needed). For Linux instances, AWS adds an inbound rule for **SSH** by default:
+
+| Type | Protocol | Port | Source |
+| --- | --- | --- | --- |
+| SSH | TCP | 22 | `0.0.0.0/0` (Anywhere) |
+
+Extra inbound rules can be added here if needed (for example HTTP on port 80 for a web server).
+
+### 8. Configure storage
+
+I kept the default **8 GiB gp3** root volume (3000 IOPS). The root volume is like a laptop's hard drive: it's where the operating system is installed. Linux needs much less space than Windows, which defaulted to 30 GiB in the [Windows Lab](/journal/aws/ec2/launching-connecting-windows-ec2-instance). Free tier accounts get up to 30 GB of EBS storage.
+
+### 9. Launch
+
+I clicked **Launch instance**, then went back to the **Instances** page and waited until the instance showed **Running** with **3/3 checks passed**.
+
+---
+
+## Part 2: Connect Using SSH
+
+Since the security group only allows SSH, I connected through the command line instead of a graphical desktop.
+
+### 1. Copy the public IP
+
+I selected the instance and copied its **Public IPv4 address** from the **Details** tab.
+
+### 2. Open Command Prompt and go to the key's folder
+
+The `demo.pem` file was in my Downloads folder, so I opened Command Prompt and moved into it:
+
+```bash
+cd Downloads
+```
+
+### 3. Connect with SSH
+
+I ran the `ssh` command with the key file (`-i`), the default Amazon Linux user (`ec2-user`), and the public IP:
+
+```bash
+ssh -i demo.pem ec2-user@PUBLIC_IP_ADDRESS
+```
+
+### 4. Accept the host fingerprint
+
+On the first connection, SSH warned that the host's authenticity couldn't be established and showed its ED25519 fingerprint. I typed `yes`, and the host was added to my list of known hosts.
+
+### 5. Logged in
+
+The Amazon Linux 2023 banner appeared, followed by the shell prompt:
+
+```bash
+[ec2-user@ip-xxx-xxx-xxx-xxx ~]$
+```
+
+I was now connected to the Linux instance and could run commands on it.
+
+---
+
+## Key Takeaways
+
+- **Amazon Linux** is available directly from the Quick Start AMIs.
+- Linux instances are accessed through **SSH on port 22**, while Windows instances use **RDP on port 3389**.
+- Linux doesn't need a decrypted password: the **`.pem` private key** is used directly to log in.
+- The default username for Amazon Linux is **`ec2-user`** (other AMIs differ, for example `ubuntu` for Ubuntu).
+- The default Linux root volume (**8 GiB gp3**) is much smaller than the Windows one (30 GiB).
+
+## Troubleshooting
+
+- **"Permission denied (publickey)":** check that you're using the right key file and the `ec2-user` username.
+- **"UNPROTECTED PRIVATE KEY FILE" or "bad permissions":** the `.pem` file is readable by other users. On Linux or macOS, run `chmod 400 demo.pem`. On Windows, remove other users' access to the file in its **Properties → Security** settings.
+- **Connection timed out:** confirm the instance is running, has a public IP, and the security group allows port 22.
+
+## Security Notes
+
+- Allowing SSH from `0.0.0.0/0` lets anyone on the internet attempt to connect. For real use, the source should be limited to **My IP**.
+- The `.pem` file should never be shared or committed to a repository.
+
+## Cleanup
+
+To avoid charges after the lab, terminate the instance from **Instance state** → **Terminate instance**, and delete the security group and key pair if they are no longer needed.

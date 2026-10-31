@@ -1,0 +1,161 @@
+---
+title: "Creating and Launching a Custom Amazon Machine Image"
+description: "How I configured a Windows EC2 instance with Web Server (IIS) and DHCP roles, captured it as a custom AMI, and launched a new instance from that image with the same setup already in place."
+date: "2026-05-19"
+order: 3
+tags: ["aws", "ec2", "ami", "windows", "iis", "lab"]
+---
+
+## Summary
+
+In this lab I created a custom Amazon Machine Image (AMI) from a configured Windows EC2 instance. I launched a Windows Server 2019 instance, connected to it over RDP, installed the Web Server (IIS) and DHCP Server roles, and confirmed the IIS website was reachable from my browser. I then created an AMI from that instance, terminated the original, and launched a new instance from my custom AMI. The new instance served the same website without me logging in or installing anything on it.
+
+## Lab Environment
+
+| Setting | Value |
+| --- | --- |
+| Region | Canada (Central) `ca-central-1` |
+| Original instance | `MyServer_AMI` |
+| Base AMI | Microsoft Windows Server 2019 Base (Free tier eligible) |
+| Instance type | `t3.micro` (2 vCPU, 1 GiB memory) |
+| Key pair | `demo` (RSA, `.pem`) |
+| Network | Default VPC, subnet in `ca-central-1a` |
+| Security group | New security group (RDP 3389, HTTP 80) |
+| Storage | 30 GiB gp2 root volume |
+| Custom AMI | `Custom_AMI` |
+| New instance | `MyServer_AMI2` |
+
+---
+
+## Part 1: Launching the Base Instance
+
+### 1. Opened EC2
+
+I searched for **EC2** in the AWS Console, opened the EC2 dashboard, went to **Instances**, and clicked **Launch instances**.
+
+### 2. Named the instance
+
+Under **Name and tags**, I named the instance `MyServer_AMI`.
+
+### 3. Chose the AMI
+
+Under **Application and OS Images**, I clicked **Browse more AMIs** and selected **Microsoft Windows Server 2019 Base** (Datacenter edition, English, 64-bit x86). I confirmed it was marked **Free tier eligible** before selecting it.
+
+### 4. Chose the instance type
+
+I selected `t3.micro`, which gave me 2 virtual CPUs and 1 GiB of RAM and is free tier eligible.
+
+### 5. Created a key pair
+
+I clicked **Create new key pair** and created a key named `demo` with the **RSA** type and **`.pem`** format. The private key downloaded automatically, and I saved it for retrieving the Windows password later.
+
+### 6. Configured network settings
+
+I clicked **Edit** under **Network settings**. I kept the default VPC and selected the subnet in `ca-central-1a`. The Canada (Central) region has three Availability Zones (`ca-central-1a`, `ca-central-1b`, and `ca-central-1d`), and choosing a subnet let me decide which one the instance ran in. I left **Auto-assign public IP** enabled.
+
+### 7. Configured the security group
+
+I chose **Create security group** and kept the name AWS generated. AWS added the RDP rule for Windows by default, and I added a second rule for HTTP so I could reach the web server from my browser:
+
+| Type | Protocol | Port | Source |
+| --- | --- | --- | --- |
+| RDP | TCP | 3389 | `0.0.0.0/0` |
+| Custom TCP | TCP | 80 | `0.0.0.0/0` |
+
+### 8. Configured storage
+
+I kept the default **30 GiB gp2** root volume, which is where Windows is installed.
+
+### 9. Launched the instance
+
+I left **Number of instances** at 1, clicked **Launch instance**, and waited for the status check to change from **Initializing** to **3/3 checks passed**.
+
+---
+
+## Part 2: Connecting and Installing Server Roles
+
+### 1. Connected over RDP
+
+I selected the instance, clicked **Connect**, opened the **RDP client** tab, and clicked **Download remote desktop file**. I opened the downloaded file and clicked **Continue** on the trust prompt.
+
+### 2. Retrieved the Administrator password
+
+Back in the console, I clicked **Get password**, uploaded my `demo.pem` file with **Upload private key file**, and clicked **Decrypt password**. I copied the decrypted password, pasted it into the Remote Desktop login window, and clicked **Connect**. The Windows Server desktop loaded.
+
+### 3. Installed the Web Server and DHCP roles
+
+1. I opened the **Start** menu and launched **Server Manager**.
+2. I clicked **Add roles and features**.
+3. On the **Server Roles** page, I checked **DHCP Server** and **Web Server (IIS)**.
+4. I clicked **Next** through the remaining pages, kept the defaults, and clicked **Install** on the final page.
+
+### 4. Changed the Administrator password
+
+After the installation finished, I went to **Tools** → **Computer Management** → **Local Users and Groups** → **Users**, right-clicked **Administrator**, selected **Set Password...**, and set a new password that I could remember.
+
+### 5. Tested the website
+
+I went back to the EC2 console, copied the instance's **Public IPv4 address**, and opened it in a new browser tab using `http://` (not `https://`). The default **IIS (Internet Information Services) welcome page** loaded, which confirmed that the Web Server role was installed correctly and that port 80 was open in the security group.
+
+> **Note:** Use `http://` when accessing the server, not `https://`. SSL/TLS certificates are not installed by default, so HTTPS connections will fail.
+
+---
+
+## Part 3: Creating the Custom AMI
+
+### 1. Created the image
+
+In the EC2 console, I selected `MyServer_AMI`, right-clicked on it, and selected **Image and templates** → **Create image**. I named the image `Custom_AMI` and left **Reboot instance** checked so that EC2 would reboot the instance and take consistent snapshots of its volumes. Then I clicked **Create image**.
+
+### 2. Waited for the AMI to become available
+
+I opened **Images** → **AMIs** in the left menu. `Custom_AMI` appeared with a status of **Pending**, and I waited until it changed to **Available**.
+
+### 3. Terminated the original instance
+
+Once the AMI was available, I terminated `MyServer_AMI`. This showed that everything I needed was now stored in the image rather than in the original instance.
+
+---
+
+## Part 4: Launching an Instance from the Custom AMI
+
+### 1. Launched a new instance
+
+I clicked **Launch instances** and named the new instance `MyServer_AMI2`. Under **Application and OS Images**, I opened the **My AMIs** tab, selected **Owned by me**, and chose `Custom_AMI`.
+
+### 2. Used the same settings as before
+
+I configured everything else the same way as the first instance: `t3.micro`, the `demo` key pair, the default VPC with a subnet in `ca-central-1a`, a security group allowing RDP (3389) and HTTP (80), and a 30 GiB root volume. Then I launched it.
+
+### 3. Tested the website on the new instance
+
+I waited for **3/3 checks passed**, copied the new instance's public IPv4 address, and opened it in my browser. The same IIS welcome page loaded.
+
+I never connected to `MyServer_AMI2` or installed any roles on it. The website worked because the new instance was built from my custom image, which already contained Windows Server with IIS and DHCP installed.
+
+---
+
+## What I Learned
+
+- An **AMI** is a template that captures an instance's operating system, installed software, and configuration.
+- A **custom AMI** let me configure a server once and reuse that setup for new instances, instead of repeating the installation steps each time.
+- When I created the image, EC2 took **EBS snapshots** of the instance's volumes. The AMI depends on those snapshots.
+- Leaving **Reboot instance** checked made EC2 restart the instance before taking snapshots, so the data was in a consistent state.
+- Custom AMIs appear under **My AMIs → Owned by me** when launching an instance, and they are **private** by default.
+- To reach a web server running on the instance, I had to add an inbound rule for **port 80** to the security group.
+- Since I didn't run Sysprep before creating the image, the new instance would keep the same Administrator password I had set on the original.
+
+## Cleanup
+
+To avoid ongoing storage charges after the lab:
+
+1. **Terminate the instance:** Go to **Instances**, select `MyServer_AMI2`, click **Instance state** → **Terminate instance**.
+2. **Deregister the AMI:** Go to **Images** → **AMIs**, select `Custom_AMI`, click **Actions** → **Deregister AMI**.
+3. **Delete the EBS snapshot:** Go to **Elastic Block Store** → **Snapshots**, find the snapshot associated with your AMI (check the description), select it, and click **Actions** → **Delete snapshot**.
+
+> **Note:** Deregistering an AMI does not automatically delete its underlying EBS snapshot. You must delete the snapshot separately to stop incurring storage costs.
+
+## Notes
+
+- Both inbound rules allowed traffic from `0.0.0.0/0`. That was fine for a short lab, but in a real setup I would restrict RDP to my own IP address.
+- A custom AMI keeps costing storage until it is deregistered and its EBS snapshot is deleted. Deregistering the AMI alone does not remove the snapshot.

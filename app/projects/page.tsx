@@ -1,15 +1,12 @@
-import { ScrambleText } from "@/components/scramble-text"
 import { ProjectCard } from "@/components/project-card"
+import { PageHeading } from "@/components/page-heading"
 import { Metadata } from "next"
 import { site } from "@/content/site"
 
 export default function ProjectsPage() {
   return (
     <main className="animate-fade-in-up">
-      <h1 className="text-4xl font-semibold mb-8 text-white font-incognito">
-        <span className="text-accent accent-glow mr-2 font-mono">*</span>
-        <ScrambleText className="font-incognito" text="projects" />
-      </h1>
+      <PageHeading scramble className="mb-8">projects</PageHeading>
 
       <p className="text-gray-400 mb-6 leading-relaxed">
         here are some of the projects i&apos;ve worked on. i love building tools

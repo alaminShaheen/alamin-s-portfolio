@@ -6,7 +6,11 @@ import {
   getPostContent,
   getAdjacentPosts,
   getReadingTime,
+  getPublishedPosts,
+  getPostUrl,
 } from "@/lib/blog"
+import { PageHeading } from "@/components/page-heading"
+import { BackLink } from "@/components/back-link"
 import { formatDateLong } from "@/lib/utils"
 import { site } from "@/content/site"
 import type { Metadata } from "next"
@@ -16,16 +20,12 @@ type PageProps = {
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata | undefined> {
-  const slug = (await params).slug
+  const { slug } = await params
   const post = getPostBySlug(slug)
-  if (!post) {
-    return
-  }
+
+  if (!post) return
 
   const publishedTime = formatDateLong(post.metadata.date)
-
-  // Relative — metadataBase in app/layout.tsx turns these into absolute URLs
-  // for whatever origin the site is deployed on.
   const ogImage = `/og/blog?title=${encodeURIComponent(post.metadata.title)}`
 
   return {
@@ -36,7 +36,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata 
       description: post.metadata.description,
       publishedTime,
       type: "article",
-      url: `/blog/${post.slug}`,
+      url: getPostUrl(post),
       images: [{ url: ogImage }],
     },
     twitter: {
@@ -50,9 +50,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata 
 }
 
 export default async function Post({ params }: PageProps) {
-  const slug = (await params).slug
+  const { slug } = await params
   const post = getPostBySlug(slug)
   const Content = getPostContent(slug)
+
   if (!post || !Content) {
     notFound()
   }
@@ -73,12 +74,10 @@ export default async function Post({ params }: PageProps) {
             datePublished: post.metadata.date,
             dateModified: post.metadata.date,
             description: post.metadata.description,
-            // JSON-LD is raw text in a <script>, so metadataBase does not
-            // apply here — these must be built from site.url explicitly.
             image: `${site.url}/og/blog?title=${encodeURIComponent(
               post.metadata.title,
             )}&top=${encodeURIComponent(formatDateLong(post.metadata.date))}`,
-            url: `${site.url}/blog/${post.slug}`,
+            url: `${site.url}${getPostUrl(post)}`,
             author: {
               "@type": "Person",
               name: site.name,
@@ -87,13 +86,8 @@ export default async function Post({ params }: PageProps) {
         }}
       />
 
-      <div className="flex items-center justify-between mb-8">
-        <Link
-          href="/blog"
-          className="text-sm text-gray-500 hover:text-accent transition-colors duration-200"
-        >
-          &larr; back
-        </Link>
+      <div className="mb-8">
+        <BackLink href="/blog">blog</BackLink>
       </div>
 
       {post.metadata.draft && (
@@ -102,10 +96,7 @@ export default async function Post({ params }: PageProps) {
         </div>
       )}
 
-      <h1 className="text-4xl font-semibold mb-4 text-white text-balance">
-        <span className="text-accent accent-glow mr-2">*</span>
-        {post.metadata.title}
-      </h1>
+      <PageHeading balance className="mb-4">{post.metadata.title}</PageHeading>
 
       <div className="mb-10 flex items-center gap-3 text-sm text-gray-500">
         <span>{formatDateLong(post.metadata.date)}</span>
@@ -121,7 +112,7 @@ export default async function Post({ params }: PageProps) {
         <nav className="mt-16 border-t border-neutral-800 pt-8 grid grid-cols-2 gap-4 text-sm">
           {prev ? (
             <Link
-              href={`/blog/${prev.slug}`}
+              href={getPostUrl(prev)}
               className="group text-gray-500 hover:text-gray-300 transition-colors duration-200"
             >
               <span className="text-xs text-gray-600 mb-1 block">previous</span>
@@ -134,7 +125,7 @@ export default async function Post({ params }: PageProps) {
           )}
           {next ? (
             <Link
-              href={`/blog/${next.slug}`}
+              href={getPostUrl(next)}
               className="group text-right text-gray-500 hover:text-gray-300 transition-colors duration-200"
             >
               <span className="text-xs text-gray-600 mb-1 block">next</span>
@@ -149,4 +140,10 @@ export default async function Post({ params }: PageProps) {
       )}
     </section>
   )
+}
+
+export function generateStaticParams() {
+  return getPublishedPosts().map((post) => ({
+    slug: post.slug,
+  }))
 }

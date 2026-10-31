@@ -1,15 +1,12 @@
-import { ScrambleText } from "@/components/scramble-text"
 import { SectionList } from "@/components/section-list"
+import { PageHeading } from "@/components/page-heading"
 import { workItems } from "@/lib/work-items"
 import { Metadata } from "next"
 
 export default function WorkPage() {
   return (
     <main className="animate-fade-in-up">
-      <h1 className="text-4xl mb-8 font-semibold text-white font-incognito">
-        <span className="text-accent accent-glow mr-2 font-mono">*</span>
-        <ScrambleText text="work" />
-      </h1>
+      <PageHeading scramble className="mb-8">work</PageHeading>
 
       <p className="text-gray-400 mb-6 leading-relaxed">
         here&apos;s where i&apos;ve worked and the kind of products i helped ship.

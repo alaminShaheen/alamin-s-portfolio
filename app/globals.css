@@ -112,3 +112,24 @@ body {
 .accent-glow {
   text-shadow: 0 0 10px rgba(255, 107, 53, 0.2);
 }
+
+/* Prose table styles */
+.prose :where(table):not(:where([class~="not-prose"],[class~="not-prose"] *)) {
+  @apply w-full border-collapse text-sm my-6;
+}
+
+.prose :where(thead):not(:where([class~="not-prose"],[class~="not-prose"] *)) {
+  @apply border-b border-neutral-700;
+}
+
+.prose :where(th):not(:where([class~="not-prose"],[class~="not-prose"] *)) {
+  @apply text-left text-gray-300 font-medium py-2 px-3;
+}
+
+.prose :where(td):not(:where([class~="not-prose"],[class~="not-prose"] *)) {
+  @apply text-left text-gray-400 py-2 px-3 border-b border-neutral-800;
+}
+
+.prose :where(tbody tr):not(:where([class~="not-prose"],[class~="not-prose"] *)):hover {
+  @apply bg-neutral-800/30;
+}
