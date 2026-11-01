@@ -1,8 +1,7 @@
 import type { MDXComponents, MDXContent } from "mdx/types"
 import Link from "next/link"
 import { Children, createElement, isValidElement } from "react"
-import { codeToHtml } from "shiki"
-import { CopyButton } from "@/components/copy-button"
+import { CodeBlock } from "@/components/code-block"
 
 type TableData = {
   headers: string[]
@@ -107,45 +106,35 @@ function Note({ children }: { children?: React.ReactNode }) {
   )
 }
 
-async function Pre({
-  children,
-  ...props
-}: React.HtmlHTMLAttributes<HTMLPreElement>) {
-  // Extract className from the children code tag
-  const codeElement = Children.toArray(children).find(
-    (child) => isValidElement(child) && child.type === "code",
-  ) as React.ReactElement<HTMLPreElement> | undefined
+function extractTextContent(node: React.ReactNode): string {
+  if (typeof node === "string") return node
+  if (typeof node === "number") return String(node)
+  if (!node) return ""
 
-  const className = codeElement?.props?.className ?? ""
-  const isCodeBlock =
-    typeof className === "string" && className.startsWith("language-")
-
-  if (isCodeBlock) {
-    const lang = className.split(" ")[0]?.split("-")[1] ?? ""
-
-    if (!lang) {
-      return <code {...props}>{children}</code>
-    }
-
-    const code = String(codeElement?.props.children)
-    const html = await codeToHtml(code, {
-      lang,
-      themes: {
-        dark: "vesper",
-        light: "vitesse-light",
-      },
-    })
-
-    return (
-      <div className="group relative">
-        <CopyButton text={code.trimEnd()} />
-        <div dangerouslySetInnerHTML={{ __html: html }} />
-      </div>
-    )
+  if (Array.isArray(node)) {
+    return node.map(extractTextContent).join("")
   }
 
-  // If not, return the component as is
-  return <pre {...props}>{children}</pre>
+  if (isValidElement(node)) {
+    return extractTextContent(node.props.children)
+  }
+
+  return ""
+}
+
+function Figure({
+  children,
+  ...props
+}: React.HTMLAttributes<HTMLElement>) {
+  // Check if this is a rehype-pretty-code figure
+  const dataAttr = (props as Record<string, unknown>)["data-rehype-pretty-code-figure"]
+  if (dataAttr !== undefined) {
+    // Extract text content from the code block for the copy button
+    const code = extractTextContent(children)
+    return <CodeBlock code={code.trimEnd()}>{children}</CodeBlock>
+  }
+
+  return <figure {...props}>{children}</figure>
 }
 
 function slugify(str: string) {
@@ -188,7 +177,7 @@ const components = {
   h4: createHeading(4),
   h5: createHeading(5),
   h6: createHeading(6),
-  pre: Pre,
+  figure: Figure,
   Table,
   Note,
 }

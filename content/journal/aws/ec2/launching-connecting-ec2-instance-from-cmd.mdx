@@ -1,0 +1,163 @@
+---
+title: "Managing EC2 with the AWS Command Line Interface"
+description: "How I installed and configured the AWS CLI, created an access key, built a security group and key pair from the command line, launched an EC2 instance, and terminated it by its instance ID."
+date: "2026-05-19"
+tags: ["aws", "cli", "ec2", "iam", "lab"]
+---
+
+## Summary
+
+In this lab I worked with EC2 from the command line instead of the AWS Console. I installed the AWS CLI, created an IAM access key, and configured my credentials and default region. Then I used CLI commands to create a security group, add an inbound RDP rule, and create a key pair. I launched a Windows Server 2016 instance with `run-instances`, confirmed it in the console, and terminated it with `terminate-instances` using its instance ID.
+
+## Lab Environment
+
+| Setting | Value |
+| --- | --- |
+| Region | Canada (Central) `ca-central-1` |
+| Tool | AWS CLI v2 on Windows Command Prompt |
+| Output format | `json` |
+| Security group | `awsclitraining` (RDP, TCP 3389) |
+| Key pair | `cliKeyPair` (saved as `clikeyPair.pem`) |
+| AMI | Microsoft Windows Server 2016 Base |
+| Instance type | `t2.micro` |
+| Subnet | Default subnet in `ca-central-1a` |
+
+---
+
+## Part 1: Installing and Configuring the AWS CLI
+
+### 1. Installed the AWS CLI
+
+I downloaded the AWS CLI v2 installer for Windows from the AWS website and ran it. After the installation finished, I opened Command Prompt.
+
+### 2. Started the configuration
+
+I ran:
+
+```bash
+aws configure
+```
+
+The CLI prompted me for an **AWS Access Key ID**, so I needed to create an access key first.
+
+### 3. Created an access key
+
+In the AWS Console, I clicked my account name in the top-right corner and selected **Security credentials**. In the **Access keys** section, I clicked **Create access key**.
+
+On the **Access key best practices & alternatives** page, I selected **Command Line Interface (CLI)** as the use case and clicked **Next**. I skipped the optional description tag and clicked **Create access key**.
+
+The **Retrieve access keys** page showed my **Access key** and **Secret access key**. The secret is only shown once, so I copied both before leaving the page.
+
+### 4. Entered my credentials
+
+Back in Command Prompt, I pasted the access key and secret access key when prompted, then set the default region and output format:
+
+```bash
+AWS Access Key ID: ****************
+AWS Secret Access Key: ****************
+Default region name: ca-central-1
+Default output format: json
+```
+
+From then on, every command I ran used these credentials and targeted `ca-central-1` unless I specified otherwise.
+
+---
+
+## Part 2: Creating a Security Group and Key Pair
+
+### 1. Created a security group
+
+I ran:
+
+```bash
+aws ec2 create-security-group --group-name awsclitraining --description "test sg from cli"
+```
+
+The command returned JSON with the new security group's `GroupId` and `SecurityGroupArn`. Because I didn't specify a VPC, the group was created in my default VPC. I copied the `GroupId` (it starts with `sg-`) into Notepad because I needed it to launch the instance.
+
+### 2. Allowed RDP traffic
+
+I added an inbound rule for RDP on port 3389:
+
+```bash
+aws ec2 authorize-security-group-ingress --group-name awsclitraining --protocol tcp --port 3389 --cidr 0.0.0.0/0
+```
+
+### 3. Created a key pair
+
+I created a key pair and saved its private key straight to a file:
+
+```bash
+aws ec2 create-key-pair --key-name cliKeyPair --query "KeyMaterial" --output text > clikeyPair.pem
+```
+
+The `--query "KeyMaterial"` option pulled only the private key out of the JSON response, `--output text` printed it as plain text, and `>` saved it into `clikeyPair.pem` in my current folder.
+
+---
+
+## Part 3: Gathering the AMI ID and Subnet ID
+
+### 1. Found the AMI ID
+
+In the EC2 console, I clicked **Launch instance**, scrolled to **Application and OS Images**, and clicked **Browse more AMIs**. I found **Microsoft Windows Server 2016 Base** and copied its AMI ID into Notepad. I didn't launch anything from the console; I only needed the ID. AMI IDs differ by region, so I made sure the console was set to Canada (Central) when I copied it.
+
+### 2. Found the subnet ID
+
+I opened the **VPC** console and went to **Subnets**. I selected the default subnet in `ca-central-1a`, copied its **Subnet ID** from the details panel, and added it to Notepad. I picked a subnet from the default VPC because that's where my security group was created. The security group and subnet must belong to the same VPC.
+
+---
+
+## Part 4: Launching and Terminating the Instance
+
+### 1. Launched the instance
+
+With the three IDs in Notepad, I filled them into the `run-instances` command:
+
+```bash
+aws ec2 run-instances --image-id AMI_ID --count 1 --instance-type t2.micro --key-name cliKeyPair --security-group-ids SECURITY_GROUP_ID --subnet-id SUBNET_ID
+```
+
+| Option | What I passed |
+| --- | --- |
+| `--image-id` | The Windows Server 2016 Base AMI ID |
+| `--count` | `1` instance |
+| `--instance-type` | `t2.micro` |
+| `--key-name` | `cliKeyPair` |
+| `--security-group-ids` | The `GroupId` of `awsclitraining` |
+| `--subnet-id` | The default subnet in `ca-central-1a` |
+
+### 2. Confirmed it in the console
+
+I opened **EC2 → Instances** and saw the new `t2.micro` instance in `ca-central-1a`. It had no name, since I didn't add a `Name` tag in the command. After a few minutes it reached **Running** with **2/2 checks passed**. I copied its instance ID for the next step.
+
+### 3. Terminated the instance
+
+Back in Command Prompt, I ran:
+
+```bash
+aws ec2 terminate-instances --instance-ids INSTANCE_ID
+```
+
+The response showed the instance's `PreviousState` as `running` (code 16) and its `CurrentState` as `shutting-down` (code 32).
+
+### 4. Confirmed termination
+
+I refreshed the **Instances** page in the console, and the instance state showed **Terminated**.
+
+---
+
+## What I Learned
+
+- The AWS CLI lets me do the same things as the console with commands, which is faster to repeat and easier to script.
+- `aws configure` stores my access key, secret key, default region, and output format, so I don't have to pass them with every command.
+- **Access keys** are long-term credentials tied to my IAM user. The secret access key is only shown once when the key is created.
+- `create-security-group` and `authorize-security-group-ingress` are the CLI equivalents of creating a security group and adding inbound rules in the console.
+- `--query` and `--output text` let me pull a single value out of a JSON response, which is how I saved the private key directly to a `.pem` file.
+- `run-instances` needs the IDs of the resources it uses (AMI, security group, subnet), so I had to collect them before launching.
+- The instance state codes in the CLI output match the console: 16 is `running`, 32 is `shutting-down`, and 48 is `terminated`.
+
+## Notes
+
+- The RDP rule allowed traffic from `0.0.0.0/0`. That was fine for this short lab, but in a real setup I would limit it to my own IP address.
+- Terminating the instance didn't remove the `awsclitraining` security group or the `cliKeyPair` key pair; those stay in the account until deleted with `delete-security-group` and `delete-key-pair`.
+- Since access keys give full CLI access as my IAM user, I deactivated and deleted the key in **Security credentials** after finishing the lab.

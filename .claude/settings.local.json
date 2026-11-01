@@ -15,7 +15,10 @@
       "WebFetch(domain:motion.dev)",
       "Bash(taskkill /PID 18188 /F)",
       "Bash(timeout /t 2 /nobreak)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "WebFetch(domain:rehype-pretty.pages.dev)",
+      "Bash(del \"C:\\Users\\NEWEGG THANK YOU\\WebstormProjects\\alamin-s-portfolio\\components\\code-block-wrapper.tsx\")",
+      "Bash(cmd /c \"taskkill /PID 51924 /F\")"
     ],
     "deny": [],
     "ask": []
