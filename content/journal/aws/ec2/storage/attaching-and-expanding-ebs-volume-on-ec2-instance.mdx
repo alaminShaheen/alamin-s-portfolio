@@ -1,0 +1,191 @@
+---
+title: "Attaching and Expanding an EBS Volume on a Windows EC2 Instance"
+description: "How I launched a Windows EC2 instance, created and attached a new EBS volume, set it up as a drive in Windows, and later increased its size without losing data."
+date: "2026-05-19"
+order: 1
+tags: ["aws", "ec2", "ebs", "windows", "storage", "lab"]
+---
+
+## Summary
+
+In this lab I launched a Windows EC2 instance and connected to it over Remote Desktop. I then created a separate EBS volume for extra storage, attached it to the instance, and initialized it in Windows Disk Management so it appeared as a new drive. Finally, I increased the volume's size in AWS and extended the drive in Windows to use the extra space.
+
+## Lab Environment
+
+| Setting | Value |
+| --- | --- |
+| Region | Canada (Central) `ca-central-1` |
+| Instance name | `WindowsInstance` |
+| AMI | Microsoft Windows Server 2019 Base (Free tier eligible) |
+| Instance type | `t3.micro` (2 vCPU, 1 GiB memory) |
+| Key pair | `demo` (RSA, `.pem`) |
+| Network | Default VPC, subnet in `ca-central-1a` |
+| Security group | New security group (RDP, TCP 3389) |
+| Root volume | 30 GiB gp2 (`C:` drive) |
+| Additional volume | gp3, 15 GiB, later increased to 30 GiB (`D:` drive) |
+
+---
+
+## Part 1: Launching the Instance
+
+### 1. Opened EC2 and named the instance
+
+I searched for **EC2** in the AWS Console, opened **Instances**, and clicked **Launch instances**. Under **Name and tags**, I named the instance `WindowsInstance`.
+
+### 2. Chose the AMI and instance type
+
+Under **Application and OS Images**, I clicked **Browse more AMIs** and selected **Microsoft Windows Server 2019 Base**, after confirming it was **Free tier eligible**. For the instance type, I chose `t3.micro`, which gave me 2 virtual CPUs and 1 GiB of RAM.
+
+### 3. Created a key pair
+
+I clicked **Create new key pair**, named it `demo`, chose **RSA** and **`.pem`**, and clicked **Create key pair**. The private key downloaded automatically, and I saved it for retrieving the Windows password later.
+
+### 4. Configured network settings
+
+I clicked **Edit** under **Network settings**, kept the default VPC, and selected the subnet in `ca-central-1a`. Choosing the subnet myself was important for this lab, because the EBS volume I created later had to be in the same Availability Zone as the instance.
+
+I chose **Create security group** and kept the default **RDP** rule (TCP port 3389) that AWS adds for Windows instances.
+
+### 5. Configured storage
+
+I kept the default **30 GiB gp2** root volume, which is where Windows is installed. The **Add new volume** button on this page could have added a second volume at launch, but I left it alone because I wanted to create and attach one separately after launch.
+
+### 6. Launched the instance
+
+I clicked **Launch instance** and waited for the status check to change from **Initializing** to **3/3 checks passed**.
+
+---
+
+## Part 2: Connecting to the Instance
+
+1. I selected `WindowsInstance`, clicked **Connect**, opened the **RDP client** tab, and clicked **Download remote desktop file**.
+2. I clicked **Get password**, uploaded `demo.pem` with **Upload private key file**, and clicked **Decrypt password**.
+3. I opened the downloaded RDP file, clicked **Continue** on the trust prompt, pasted the decrypted password, and clicked **Connect**.
+
+The Windows Server desktop loaded.
+
+---
+
+## Part 3: Checking the Existing Storage
+
+Inside the instance, I pressed **Windows + R**, typed `diskmgmt.msc`, and clicked **OK** to open **Disk Management**.
+
+There was only one disk: **Disk 0**, 30 GB, holding the `C:` drive. This is the root volume, and it holds the operating system. In practice, application data and files are usually kept on a separate volume rather than on the root drive, so I decided to add another one.
+
+---
+
+## Part 4: Creating and Attaching a New EBS Volume
+
+### 1. Opened the Volumes page
+
+Back in the EC2 console in my browser, I went to **Elastic Block Store** → **Volumes** in the left menu. The only volume listed was the instance's 30 GiB gp2 root volume.
+
+### 2. Created the volume
+
+I clicked **Create volume** and used these settings:
+
+| Setting | Value |
+| --- | --- |
+| Volume type | General Purpose SSD (gp3) |
+| Size | 15 GiB |
+| IOPS | 3000 (default) |
+| Throughput | 125 MiB/s (default) |
+| Availability Zone | `ca-central-1a` |
+| Snapshot | Don't create volume from a snapshot |
+| Encryption | Not encrypted |
+
+The Availability Zone was the most important setting. An EBS volume can only attach to an instance in the same AZ, so I matched it to the instance's AZ, `ca-central-1a`. I clicked **Create volume**, and the new 15 GiB gp3 volume appeared in the list next to the root volume.
+
+### 3. Attached the volume
+
+I selected the new volume and clicked **Actions** → **Attach volume**. For **Instance**, I chose `WindowsInstance`. The list only showed instances in the same AZ as the volume. For **Device name**, I chose `xvdf`, which AWS recommends for Windows data volumes. Then I clicked **Attach volume**.
+
+---
+
+## Part 5: Setting Up the Drive in Windows
+
+### 1. Found the new disk
+
+Back in Disk Management on the instance, a new disk appeared: **Disk 1**, 15 GB, marked **Unknown** and **Not Initialized**, with all its space **Unallocated**. It didn't show up in **This PC** yet, because Windows can't use a disk until it's initialized and partitioned.
+
+### 2. Initialized the disk
+
+I right-clicked **Disk 1** and selected **Initialize Disk**. In the dialog, I left **Disk 1** checked, kept the partition style as **MBR (Master Boot Record)**, and clicked **OK**. The disk changed to **Basic** and **Online**.
+
+### 3. Created a new volume
+
+I right-clicked the unallocated space on Disk 1 and selected **New Simple Volume**. I clicked **Next** through the wizard, keeping the default size, drive letter, and NTFS formatting, and clicked **Finish**.
+
+### 4. Confirmed the new drive
+
+I opened **This PC**. A new drive, **New Volume (D:)**, appeared next to `C:`, showing **14.9 GB free of 14.9 GB**.
+
+---
+
+## Part 6: Increasing the Volume Size
+
+Next, I simulated running out of space on the `D:` drive and needing more storage.
+
+### 1. Modified the volume in AWS
+
+In the EC2 console, on the **Volumes** page, I selected the 15 GiB gp3 volume and clicked **Actions** → **Modify volume**. I changed **Size** from 15 to **30 GiB**, left IOPS and throughput unchanged, and clicked **Modify**. The volume stayed attached and in use the whole time.
+
+### 2. Checked the drive in Windows
+
+When I opened **This PC** again, `D:` still showed **14.9 GB**. Increasing the volume in AWS added space to the disk, but Windows doesn't automatically grow the existing partition into it.
+
+### 3. Extended the volume in Windows
+
+I opened Disk Management again with **Windows + R** → `diskmgmt.msc`. Disk 1 now showed **30 GB** total: the original 15 GB `D:` partition, followed by **15 GB Unallocated**.
+
+I right-clicked **New Volume (D:)**, selected **Extend Volume**, clicked **Next** through the wizard to add all the unallocated space, and clicked **Finish**.
+
+### 4. Confirmed the new size
+
+I closed Disk Management and opened **This PC**. The `D:` drive now showed **29.9 GB free of 29.9 GB**. The volume had grown without being detached or reformatted.
+
+---
+
+## What I Learned
+
+- **EBS (Elastic Block Store)** volumes are network-attached virtual disks for EC2 instances. Every instance has a root volume, and more volumes can be attached for extra storage.
+- An EBS volume and the instance it attaches to must be in the **same Availability Zone**.
+- Attaching a volume in AWS isn't enough on its own. Windows needs it to be **initialized**, **partitioned**, and **formatted** before it shows up as a drive.
+- Volume sizes can be **increased while the volume is in use**, without detaching it or stopping the instance.
+- After increasing a volume in AWS, the operating system also has to **extend the partition** to use the new space.
+- Windows shows 15 GiB as about 14.9 GB because of file system overhead and the difference between how AWS and Windows report sizes.
+- `gp3` volumes include 3000 IOPS and 125 MiB/s of throughput by default, regardless of size. With `gp2`, performance increases with volume size.
+
+## Notes
+
+- EBS volumes can be made larger, but never smaller. To shrink storage, I would have to create a new, smaller volume and copy the data over.
+- After modifying a volume, AWS requires waiting at least six hours before modifying it again.
+- A volume attached after launch isn't deleted automatically when the instance is terminated, unlike the root volume.
+
+---
+
+## Cleanup
+
+After finishing the lab, I deleted everything I created so it wouldn't keep incurring charges. EBS volumes are billed for their full size whether or not they're in use, and a running instance is billed by the hour along with its public IPv4 address.
+
+### 1. Detached and deleted the extra volume
+
+1. Inside the instance, I opened Disk Management, right-clicked **Disk 1**, and selected **Offline** so Windows stopped using it.
+2. In the EC2 console, I went to **Elastic Block Store** → **Volumes**, selected the 30 GiB **gp3** volume, and clicked **Actions** → **Detach volume**.
+3. I waited for its state to change from **In-use** to **Available**, then clicked **Actions** → **Delete volume** and confirmed.
+
+### 2. Terminated the instance
+
+I went to **Instances**, selected `WindowsInstance`, and clicked **Instance state** → **Terminate (delete) instance**. Terminating it also deleted its 30 GiB gp2 root volume, because root volumes are set to delete on termination by default.
+
+### 3. Deleted the security group
+
+Once the instance showed **Terminated**, I went to **Network & Security** → **Security Groups**, selected the security group created for this lab, and clicked **Actions** → **Delete security groups**. A security group can't be deleted while an instance is still using it, so this had to wait until after termination.
+
+### 4. Deleted the key pair
+
+I went to **Network & Security** → **Key Pairs**, selected `demo`, and clicked **Actions** → **Delete**. I also deleted the `demo.pem` file from my computer, since it no longer matched any instance.
+
+### 5. Confirmed nothing was left
+
+I checked that the **Volumes** page didn't list any volumes from this lab and that the **Instances** page showed only the terminated instance. Terminated instances disappear from the list on their own after about an hour and aren't billed.

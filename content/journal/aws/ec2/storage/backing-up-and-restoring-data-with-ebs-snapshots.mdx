@@ -1,0 +1,176 @@
+---
+title: "Backing Up and Restoring Data with EBS Snapshots"
+description: "How I stored files on an EBS volume, backed it up with a snapshot, deleted the files, and recovered them by creating a new volume from the snapshot."
+date: "2026-05-20"
+order: 2
+tags: ["aws", "ec2", "ebs", "snapshots", "backup", "windows", "lab"]
+---
+
+## Summary
+
+In this lab I launched a Windows EC2 instance with an extra EBS volume for data storage. I set the volume up as a drive in Windows, saved some files on it, and backed it up by creating an EBS snapshot. Then I deleted the files to simulate data loss. To recover them, I created a new volume from the snapshot, attached it to the instance, and brought it online in Windows, where all the deleted files were back.
+
+## Lab Environment
+
+| Setting | Value |
+| --- | --- |
+| Region | Canada (Central) `ca-central-1` |
+| Instance name | `WindowsInstance` |
+| AMI | Microsoft Windows Server 2019 Base (Free tier eligible) |
+| Instance type | `t3.micro` (2 vCPU, 1 GiB memory) |
+| Key pair | `demo` (RSA, `.pem`) |
+| Network | Default VPC, subnet in `ca-central-1a` |
+| Security group | New security group (RDP, TCP 3389) |
+| Root volume | 30 GiB gp3 (`C:` drive) |
+| Data volume | 15 GiB gp3, named `MyBackupVolume` (`D:` drive) |
+| Snapshot | `MyBackup` (description: "learning snapshot") |
+| Restored volume | 15 GiB gp3 created from `MyBackup` (`E:` drive) |
+
+---
+
+## Part 1: Launching the Instance with an Extra Volume
+
+### 1. Opened EC2 and named the instance
+
+I searched for **EC2** in the AWS Console, opened **Instances**, and clicked **Launch instances**. Under **Name and tags**, I named the instance `WindowsInstance`.
+
+### 2. Chose the AMI and instance type
+
+Under **Application and OS Images**, I clicked **Browse more AMIs** and selected **Microsoft Windows Server 2019 Base**, after confirming it was **Free tier eligible**. For the instance type, I chose `t3.micro`.
+
+### 3. Created a key pair
+
+I clicked **Create new key pair**, named it `demo`, chose **RSA** and **`.pem`**, and clicked **Create key pair**. I saved the downloaded private key for retrieving the Windows password later.
+
+### 4. Configured network settings
+
+I clicked **Edit** under **Network settings**, kept the default VPC, and selected the subnet in `ca-central-1a`. I chose **Create security group** and kept the default **RDP** rule (TCP port 3389).
+
+### 5. Configured storage
+
+Under **Configure storage**, I kept the **30 GiB gp3** root volume for Windows. This time I also clicked **Add new volume** and added a second **15 GiB gp3** EBS volume. Adding it here meant it was created and attached automatically when the instance launched, instead of creating and attaching it separately like in [this](/journal/aws/ec2/storage/attaching-and-expanding-ebs-volume-on-ec2-instance/) EBS lab.
+
+### 6. Launched the instance
+
+I clicked **Launch instance** and waited for the status check to reach **3/3 checks passed**.
+
+---
+
+## Part 2: Connecting and Setting Up the Data Drive
+
+### 1. Connected over RDP
+
+I selected the instance, clicked **Connect**, opened the **RDP client** tab, and downloaded the remote desktop file. I clicked **Get password**, uploaded `demo.pem`, clicked **Decrypt password**, and used that password to log in through Remote Desktop.
+
+### 2. Opened Disk Management
+
+Inside the instance, I pressed **Windows + R**, typed `diskmgmt.msc`, and clicked **OK**. Along with **Disk 0** (the 30 GB `C:` drive), there was **Disk 1**: 15 GB, **Unknown**, **Not Initialized**, and fully **Unallocated**. The volume was attached, but it didn't appear in **This PC** yet.
+
+### 3. Initialized the disk and created a drive
+
+1. I right-clicked **Disk 1**, selected **Initialize Disk**, kept **MBR (Master Boot Record)**, and clicked **OK**.
+2. I right-clicked the unallocated space, selected **New Simple Volume**, clicked **Next** through the wizard with the default settings, and clicked **Finish**.
+
+In **This PC**, a new drive called **New Volume (D:)** appeared with 14.9 GB free.
+
+### 4. Saved some files
+
+I opened the `D:` drive and created four Rich Text documents: `doc1`, `doc2`, `doc3`, and `doc4`. These were the files I wanted to protect with a backup.
+
+---
+
+## Part 3: Creating a Snapshot
+
+### 1. Named the data volume
+
+Back in the EC2 console in my browser, I went to **Elastic Block Store** → **Volumes**. There were two volumes: the 30 GiB root volume and the 15 GiB data volume. I clicked the empty **Name** field on the 15 GiB volume and named it `MyBackupVolume`, so it would be easy to find when creating the snapshot.
+
+### 2. Created the snapshot
+
+1. I went to **Elastic Block Store** → **Snapshots** and clicked **Create snapshot**.
+2. Under **Resource type**, I kept **Volume**, since I only wanted to back up one volume rather than every volume attached to the instance.
+3. For **Volume ID**, I selected `MyBackupVolume`.
+4. Under **Snapshot details**, I entered the description `learning snapshot`.
+5. I skipped tags and clicked **Create snapshot**.
+
+### 3. Named the snapshot
+
+The snapshot appeared in the list with a **Volume size** of 15 GiB but a **Full snapshot size** of only about 43 MiB. That's because a snapshot only stores the blocks that actually contain data, not the empty space on the volume. I named the snapshot `MyBackup`.
+
+---
+
+## Part 4: Simulating Data Loss
+
+I went back to the instance, opened the `D:` drive, selected all four documents, and deleted them permanently. At this point, the files were gone from the instance and existed only in the snapshot.
+
+---
+
+## Part 5: Restoring the Data from the Snapshot
+
+### 1. Created a volume from the snapshot
+
+In the EC2 console, I went to **Snapshots**, selected `MyBackup`, and clicked **Actions** → **Create volume from snapshot**. The new volume kept the snapshot's 15 GiB gp3 settings, and I made sure its **Availability Zone** was `ca-central-1a`, the same AZ as the instance, so I could attach it. Then I clicked **Create volume**.
+
+### 2. Attached the restored volume
+
+On the **Volumes** page, there were now three volumes: the root volume, `MyBackupVolume`, and the new 15 GiB volume created from the snapshot. The new one wasn't attached to anything yet.
+
+I selected it, clicked **Actions** → **Attach volume**, chose `WindowsInstance`, kept the suggested device name, and clicked **Attach volume**.
+
+### 3. Brought the disk online in Windows
+
+Back in the instance, **This PC** still only showed `C:` and `D:`. I opened Disk Management and found a new **Disk 2**: 15 GB, **Basic**, but marked **Offline**.
+
+Unlike Disk 1 earlier, this disk didn't need to be initialized or formatted, because it was an exact copy of a disk that already had a partition and files on it. Windows took it offline because it had the same disk signature as Disk 1, which it was copied from.
+
+I right-clicked **Disk 2** and selected **Online**.
+
+### 4. Confirmed the files were restored
+
+I opened **This PC**, and a new drive called **New Volume (E:)** had appeared. Inside it were `doc1`, `doc2`, `doc3`, and `doc4`, the same files I had deleted from `D:`. The backup had worked.
+
+---
+
+## What I Learned
+
+- An **EBS snapshot** is a point-in-time backup of a volume. It captures the volume's data at the moment the snapshot is created.
+- Snapshots are **incremental** and only store blocks that contain data, which is why a snapshot of a 15 GiB volume holding four small files was only about 43 MiB.
+- A snapshot can't be opened or browsed directly. To get data back, I had to **create a new volume from it** and attach that volume to an instance.
+- Snapshots are stored at the **region level**, not in a single AZ. That means a volume created from a snapshot can be placed in any AZ in the region, but it still has to be in the same AZ as the instance it attaches to.
+- A volume restored from a snapshot **already has its partition and files**, so it doesn't need to be initialized or formatted like a brand-new volume.
+- Windows took the restored disk **offline** at first because it was a copy of a disk that was already attached, and I had to bring it online manually.
+- Volumes can be added **during instance launch** with **Add new volume**, which creates and attaches them automatically.
+
+---
+
+## Cleanup
+
+After finishing the lab, I deleted everything I created so it wouldn't keep incurring charges. EBS volumes and snapshots are both billed for the storage they use, and a running instance is billed by the hour along with its public IPv4 address.
+
+### 1. Took the data disks offline in Windows
+
+Inside the instance, I opened Disk Management, right-clicked **Disk 1** and **Disk 2**, and selected **Offline** for each, so Windows stopped using them before I detached them.
+
+### 2. Detached and deleted the data volumes
+
+1. In the EC2 console, I went to **Elastic Block Store** → **Volumes**.
+2. I selected the restored 15 GiB volume and clicked **Actions** → **Detach volume**, then did the same for `MyBackupVolume`.
+3. Once both showed **Available**, I selected each one and clicked **Actions** → **Delete volume**.
+
+I detached and deleted both data volumes myself rather than relying on instance termination, so I didn't have to check whether each one was set to delete on termination.
+
+### 3. Deleted the snapshot
+
+I went to **Elastic Block Store** → **Snapshots**, selected `MyBackup`, and clicked **Actions** → **Delete snapshot**. Snapshots aren't tied to an instance or volume, so they stay in the account and keep being billed until they're deleted.
+
+### 4. Terminated the instance
+
+I went to **Instances**, selected `WindowsInstance`, and clicked **Instance state** → **Terminate (delete) instance**. This also deleted the 30 GiB root volume.
+
+### 5. Deleted the security group and key pair
+
+Once the instance showed **Terminated**, I went to **Network & Security** → **Security Groups** and deleted the security group created for this lab. Then I went to **Network & Security** → **Key Pairs**, deleted `demo`, and removed the `demo.pem` file from my computer.
+
+### 6. Confirmed nothing was left
+
+I checked that the **Volumes** and **Snapshots** pages didn't list anything from this lab, and that the **Instances** page showed only the terminated instance.

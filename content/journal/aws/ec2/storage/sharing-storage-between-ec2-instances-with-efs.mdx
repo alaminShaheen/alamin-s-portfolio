@@ -1,0 +1,241 @@
+---
+title: "Sharing Storage Between EC2 Instances with Amazon EFS"
+description: "How I created an Amazon EFS file system, mounted it on two Linux EC2 instances in different Availability Zones, and confirmed that files written on one instance appeared on the other."
+date: "2026-05-20"
+order: 3
+tags: ["aws", "ec2", "efs", "linux", "nfs", "storage", "lab"]
+---
+
+## Summary
+
+In this lab I set up Amazon Elastic File System (EFS) as shared storage for two Linux EC2 instances in different Availability Zones. I created two security groups, one for the instances and one for EFS, so that only my instances could reach the file system. I launched both instances, created an EFS file system with a mount target in each AZ, and mounted it on both instances. I then created a file on each instance and confirmed that both files were visible from the other one.
+
+## Architecture
+
+| Component | Details |
+| --- | --- |
+| Region | Canada (Central) `ca-central-1` |
+| `EFS_VM1` | Amazon Linux, `t3.micro`, subnet in `ca-central-1a`, security group `WebSg` |
+| `EFS_VM2` | Amazon Linux, `t3.micro`, subnet in `ca-central-1b`, security group `WebSg` |
+| `WebSg` | Inbound SSH (TCP 22) from `0.0.0.0/0`, all outbound allowed |
+| `EfsSG` | Inbound NFS (TCP 2049) from `WebSg`, all outbound allowed |
+| EFS file system | `Shared_Storage`, mount targets in `ca-central-1a` and `ca-central-1b`, both using `EfsSG` |
+
+Both instances connected to the same EFS file system through the mount target in their own AZ.
+
+---
+
+## Part 1: Creating the Security Groups
+
+I opened the **VPC** console, went to **Security Groups**, and created two security groups in the default VPC.
+
+### 1. WebSg (for the EC2 instances)
+
+| Type | Protocol | Port | Source |
+| --- | --- | --- | --- |
+| SSH | TCP | 22 | `0.0.0.0/0` |
+
+This let me connect to both instances over SSH.
+
+### 2. EfsSG (for the EFS mount targets)
+
+| Type | Protocol | Port | Source |
+| --- | --- | --- | --- |
+| NFS | TCP | 2049 | `WebSg` (security group ID) |
+
+EFS uses the NFS protocol on port 2049. Instead of allowing an IP range, I set the source to the `WebSg` security group itself. This meant any instance using `WebSg` could reach EFS, and nothing else could.
+
+Both security groups then appeared in the list, ready to use.
+
+---
+
+## Part 2: Launching the Two Instances
+
+I launched two instances with the same settings except for the subnet:
+
+| Setting | `EFS_VM1` | `EFS_VM2` |
+| --- | --- | --- |
+| AMI | Amazon Linux | Amazon Linux |
+| Instance type | `t3.micro` | `t3.micro` |
+| Key pair | `demo` | `demo` |
+| VPC | Default | Default |
+| Subnet | `ca-central-1a` | `ca-central-1b` |
+| Auto-assign public IP | Enabled | Enabled |
+| Security group | Existing: `WebSg` | Existing: `WebSg` |
+
+Under **Network settings**, I clicked **Edit**, picked the subnet, chose **Select existing security group**, and selected `WebSg`. Putting the instances in different AZs let me test that EFS works across Availability Zones.
+
+Both instances reached **Running** with **3/3 checks passed**.
+
+---
+
+## Part 3: Creating the EFS File System
+
+### 1. Started the wizard
+
+I searched for **EFS** in the AWS Console, opened it, and clicked **Create file system**. I entered the name `Shared_Storage`, kept the default VPC, and clicked **Customize** instead of accepting the recommended settings.
+
+### 2. General settings
+
+- **Automatic backups:** I unchecked **Enable automatic backups**, since this was a short lab and backups add cost.
+- **Encryption:** I unchecked **Enable encryption of data at rest**.
+- I left everything else at its defaults, including **Elastic** throughput mode, and clicked **Next**.
+
+### 3. Mount targets
+
+A mount target is the network endpoint inside an AZ that instances connect to. I needed one in each AZ where I had an instance:
+
+| Availability Zone | Subnet | Security group |
+| --- | --- | --- |
+| `ca-central-1a` | Default subnet in `ca-central-1a` | `EfsSG` |
+| `ca-central-1b` | Default subnet in `ca-central-1b` | `EfsSG` |
+
+For each mount target, I removed the default security group that the wizard added and selected `EfsSG` instead. The wizard also suggested a mount target for `ca-central-1d`, which I removed because I didn't have an instance there.
+
+### 4. Created the file system
+
+I clicked **Next** on the mount targets page, **Next** again on the file system policy page without changing anything, and then **Create** on the review page. The file system `Shared_Storage` appeared with a state of **Available** and a size of only 6 KiB, since it was empty.
+
+---
+
+## Part 4: Mounting EFS on the First Instance
+
+### 1. Connected over SSH
+
+I opened Command Prompt on my computer, moved into the folder with my key, and connected to `EFS_VM1` with its public IP:
+
+```bash
+cd Downloads
+ssh -i demo.pem ec2-user@EFS_VM1_PUBLIC_IP
+```
+
+I typed `yes` to accept the host fingerprint, and the Amazon Linux 2023 prompt appeared.
+
+### 2. Switched to root
+
+```bash
+sudo -i
+```
+
+### 3. Installed the EFS utilities
+
+```bash
+yum install amazon-efs-utils
+```
+
+I entered `y` when asked to confirm. This installed `amazon-efs-utils`, which provides the EFS mount helper, along with `stunnel`, which the helper uses to encrypt traffic to EFS.
+
+### 4. Created a mount point
+
+```bash
+mkdir efs
+```
+
+Since I was logged in as root, this created the folder at `/root/efs`.
+
+### 5. Mounted the file system
+
+In the EFS console, I opened `Shared_Storage` and clicked **Attach**. Under **Mount via DNS**, I copied the command listed under **Using the EFS mount helper** and ran it on the instance:
+
+```bash
+sudo mount -t efs -o tls FILE_SYSTEM_ID:/ efs
+```
+
+This mounted the EFS file system onto the `efs` folder, using TLS to encrypt data in transit.
+
+### 6. Created a test file
+
+```bash
+cd efs
+ls
+```
+
+The folder was empty. I created a file and typed a line of text into it:
+
+```bash
+cat >> new
+This File is created for VM1
+```
+
+I pressed **Ctrl + Z** to stop `cat`. Running `ls` showed the file `new`, and `cat new` printed the text I'd typed.
+
+---
+
+## Part 5: Mounting EFS on the Second Instance
+
+I opened a second Command Prompt window and repeated the same steps for `EFS_VM2`: I connected over SSH with its public IP, ran `sudo -i`, installed `amazon-efs-utils`, created the `efs` folder, and mounted the file system with the same mount command.
+
+Inside the `efs` folder on `EFS_VM2`, I created another file:
+
+```bash
+cat >> VM2
+This is a VM2
+```
+
+---
+
+## Part 6: Verifying the Shared Storage
+
+Back in the first Command Prompt window, connected to `EFS_VM1`, I ran:
+
+```bash
+cat VM2
+```
+
+It printed `This is a VM2`. The file I created on `EFS_VM2` in `ca-central-1b` was immediately readable from `EFS_VM1` in `ca-central-1a`. Both instances were reading and writing the same file system.
+
+---
+
+## What I Learned
+
+- **Amazon EFS** is a shared, network-based file system. Unlike an EBS volume, which normally attaches to one instance, many instances can mount the same EFS file system at the same time.
+- EFS is a **regional** service. Instances in different Availability Zones can share one file system, as long as there's a **mount target** in each AZ.
+- EFS uses the **NFS protocol on TCP port 2049**, so the mount targets' security group has to allow that port from the instances.
+- Using a **security group as the source** of a rule (`WebSg` in `EfsSG`) is cleaner than using IP addresses. Any instance with `WebSg` can reach EFS, even if its IP changes.
+- EFS has **no fixed size**. It grows and shrinks automatically, and I only pay for the data stored.
+- The **`amazon-efs-utils`** package provides the EFS mount helper (`mount -t efs`), and the `-o tls` option encrypts traffic between the instance and EFS.
+- A mount done with the `mount` command lasts only until the instance reboots. To mount EFS automatically at startup, it would need an entry in `/etc/fstab`.
+- EFS works with **Linux** instances. Windows instances would use a different service, such as Amazon FSx for Windows File Server.
+
+## Notes
+
+- Pressing **Ctrl + Z** suspends `cat` instead of ending it cleanly. The text was still saved because `cat` writes each line as it's entered, but **Ctrl + D** is the proper way to finish input.
+- `WebSg` allowed SSH from `0.0.0.0/0`. That was fine for a short lab, but in a real setup I would limit it to my own IP address.
+
+---
+
+## Cleanup
+
+After finishing the lab, I deleted everything I created so it wouldn't keep incurring charges. EFS is billed for the data stored, running instances are billed by the hour along with their public IPv4 addresses, and leftover security groups clutter the account.
+
+### 1. Unmounted EFS on both instances
+
+On each instance, I left the `efs` folder and unmounted the file system:
+
+```bash
+cd ~
+umount efs
+```
+
+### 2. Deleted the EFS file system
+
+In the EFS console, I selected `Shared_Storage`, clicked **Delete**, typed the file system ID to confirm, and clicked **Confirm**. Deleting the file system also deleted both mount targets and the files stored on it.
+
+### 3. Terminated the instances
+
+In the EC2 console, I selected `EFS_VM1` and `EFS_VM2`, then clicked **Instance state** → **Terminate (delete) instance**. Their root volumes were deleted along with them.
+
+### 4. Deleted the security groups
+
+Once both instances showed **Terminated** and the mount targets were gone, I went to **Security Groups** and deleted them in this order:
+
+1. **`EfsSG` first**, because its inbound rule references `WebSg`. AWS won't delete a security group while another group's rule points to it.
+2. **`WebSg` second**, once nothing referenced it anymore.
+
+### 5. Deleted the key pair
+
+I went to **Network & Security** → **Key Pairs**, deleted `demo`, and removed the `demo.pem` file from my computer.
+
+### 6. Confirmed nothing was left
+
+I checked that the EFS console showed no file systems, the **Instances** page showed only terminated instances, and the **Security Groups** page no longer listed `WebSg` or `EfsSG`.
