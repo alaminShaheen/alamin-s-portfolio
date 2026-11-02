@@ -1,0 +1,190 @@
+---
+title: "Creating Multiple Subnets and Connecting a VPC to the Internet"
+description: "How I split my custom VPC into two /25 subnets in different Availability Zones, launched an EC2 instance in each, and gave them internet access with an Internet Gateway and a route table entry."
+date: "2026-05-22"
+order: 3
+tags: ["aws", "vpc", "subnet", "internet-gateway", "route-table", "ec2", "lab"]
+---
+
+## Summary
+
+In this lab I continued working with `myfirst-vpc` from the [previous](/journal/aws/vpc/creating-custom-vpc-and-subnets) lab. Its only subnet used the VPC's entire `/24` range, so there was no room for a second subnet. I deleted it and split the VPC's range into two `/25` subnets in different Availability Zones. I then launched an EC2 instance in each subnet. At first I couldn't connect to either instance, because the VPC had no route to the internet. After I created an Internet Gateway, attached it to the VPC, and added a `0.0.0.0/0` route to the main route table, I was able to SSH into the instances and reach the internet from them.
+
+## Lab Environment
+
+| Setting | Value |
+| --- | --- |
+| Region | Canada (Central) `ca-central-1` |
+| VPC | `myfirst-vpc` (`192.168.0.0/24`) |
+| `Subnet-1` | `192.168.0.0/25`, `ca-central-1a`, 123 usable IPs |
+| `Subnet-2` | `192.168.0.128/25`, `ca-central-1b`, 123 usable IPs |
+| `Server-1` | Amazon Linux, `t3.micro`, in `Subnet-1` |
+| `Server-2` | Amazon Linux, `t3.micro`, in `Subnet-2` |
+| Security group | Inbound SSH (TCP 22) from `0.0.0.0/0` |
+| Internet Gateway | `IGW`, attached to `myfirst-vpc` |
+| Main route table | Added route `0.0.0.0/0` → `IGW` |
+
+---
+
+## Part 1: Making Room for a Second Subnet
+
+### 1. Reviewed the existing setup
+
+I opened the **VPC** console and looked at `myfirst-vpc` and its subnets. There was only one subnet, `Subnet-1`, in `ca-central-1a`. With only one subnet, every instance in the VPC would have to run in the same Availability Zone, so a problem in that AZ would take everything down.
+
+### 2. Tried to create a second subnet
+
+I clicked **Create subnet**, selected `myfirst-vpc`, chose `ca-central-1b`, and entered `192.168.0.0/24` as the CIDR block. AWS showed an error because that range conflicted with `Subnet-1`. The original subnet already used the VPC's entire `/24`, so there were no addresses left for a second one.
+
+### 3. Deleted the original subnet
+
+I went back to **Subnets**, selected the old `Subnet-1`, and clicked **Actions** → **Delete subnet**. Nothing was running in it, so it deleted right away and the VPC's full address range was available again.
+
+---
+
+## Part 2: Creating Two /25 Subnets
+
+I split the VPC's `/24` range in half by adding one bit to the prefix. Each `/25` has 2⁷ = 128 addresses, and with AWS's 5 reserved addresses, 123 usable ones.
+
+### 1. Created Subnet-1
+
+| Setting | Value |
+| --- | --- |
+| VPC | `myfirst-vpc` |
+| Subnet name | `Subnet-1` |
+| Availability Zone | `ca-central-1a` |
+| IPv4 subnet CIDR | `192.168.0.0/25` (`192.168.0.0` to `192.168.0.127`) |
+
+### 2. Created Subnet-2
+
+| Setting | Value |
+| --- | --- |
+| VPC | `myfirst-vpc` |
+| Subnet name | `Subnet-2` |
+| Availability Zone | `ca-central-1b` |
+| IPv4 subnet CIDR | `192.168.0.128/25` (`192.168.0.128` to `192.168.0.255`) |
+
+### 3. Verified the subnets
+
+The **Subnets** page showed both subnets as **Available**, each with **123** available IPv4 addresses, in two different Availability Zones. Workloads could now be spread across both AZs, so if one AZ had a problem, the other could keep running.
+
+---
+
+## Part 3: Launching an Instance in Each Subnet
+
+### 1. Launched Server-1
+
+In the EC2 console, I clicked **Launch instances** and configured the first instance:
+
+- **Name:** `Server-1`
+- **AMI:** Amazon Linux (Quick Start)
+- **Instance type:** `t3.micro`
+- **Key pair:** my existing key pair
+
+Under **Network settings**, I clicked **Edit**, selected `myfirst-vpc` as the VPC, chose `Subnet-1`, and set **Auto-assign public IP** to **Enable**. I kept **Create security group**, which added an inbound SSH rule on port 22. Then I clicked **Launch instance**.
+
+Custom subnets don't give instances a public IP by default, which is why I had to turn on **Auto-assign public IP** manually during launch.
+
+### 2. Turned on auto-assign public IP for Subnet-2
+
+Before launching the second instance, I changed the setting on the subnet itself instead of on each instance. In the VPC console, I opened `Subnet-2`, clicked **Actions** → **Edit subnet settings**, checked **Enable auto-assign public IPv4 address**, and saved. Any instance launched in `Subnet-2` would now get a public IP automatically.
+
+### 3. Launched Server-2
+
+I launched a second instance the same way, named `Server-2`, with `myfirst-vpc` as the VPC and `Subnet-2` as the subnet, using a security group that allowed SSH on port 22. Because of the subnet setting, **Auto-assign public IP** was already set to **Enable**.
+
+Both instances reached **Running**, and each had a public IPv4 address.
+
+---
+
+## Part 4: Finding Out Why I Couldn't Connect
+
+I copied `Server-1`'s public IP and tried to connect from my computer:
+
+```bash
+ssh -i KEY_FILE.pem ec2-user@SERVER_1_PUBLIC_IP
+```
+
+The connection timed out. I also tried **EC2 Instance Connect** from the console, and that failed too.
+
+The instances had public IPs and the security group allowed SSH, but the VPC itself had **no connection to the internet**. A brand-new custom VPC is completely private. Traffic from outside couldn't get in, and traffic from the instances couldn't get out, until I added an Internet Gateway and a route to it.
+
+---
+
+## Part 5: Connecting the VPC to the Internet
+
+### 1. Created an Internet Gateway
+
+In the VPC console, I went to **Internet Gateways**, clicked **Create internet gateway**, named it `IGW`, and clicked **Create internet gateway**. A new Internet Gateway starts out **Detached**, so it doesn't do anything yet.
+
+### 2. Attached it to the VPC
+
+With `IGW` selected, I clicked **Actions** → **Attach to VPC**, chose `myfirst-vpc`, and clicked **Attach internet gateway**. Its state changed to **Attached**.
+
+### 3. Added a route to the Internet Gateway
+
+Attaching the gateway gave the VPC a door to the internet, but nothing in the VPC knew to use it yet. That's what the route table controls.
+
+1. I went to **Route tables** and found the **main route table** for `myfirst-vpc`. AWS created it with the VPC, it can't be deleted, and both subnets used it automatically because I hadn't associated them with any other route table.
+2. I opened the **Routes** tab and clicked **Edit routes**. There was one existing route, `192.168.0.0/24` → `local`, which lets resources inside the VPC talk to each other.
+3. I clicked **Add route**, set **Destination** to `0.0.0.0/0` and **Target** to **Internet Gateway** → `IGW`, and saved.
+
+The new route showed a status of **Active**. `0.0.0.0/0` matches every IP address, so any traffic not meant for the VPC itself would now be sent to the Internet Gateway.
+
+---
+
+## Part 6: Verifying Internet Access
+
+I ran the same SSH command again, and this time it connected to `Server-1` and showed the Amazon Linux 2023 prompt.
+
+To confirm the instance could reach the internet as well, I ran:
+
+```bash
+ping google.com
+```
+
+The instance received replies from Google's servers with 0% packet loss. I pressed **Ctrl + C** to stop the ping.
+
+---
+
+## What I Learned
+
+- Subnets in the same VPC **can't overlap**. Because the old subnet used the whole `/24`, I had to delete it before I could split the range.
+- Splitting a `/24` into two `/25`s gives two subnets of **128 addresses** each, or **123 usable** in AWS.
+- Putting subnets in **different Availability Zones** lets instances run in more than one AZ, which improves **availability and fault tolerance**.
+- A **public IP alone isn't enough** to reach an instance. The VPC also needs an Internet Gateway and a route to it.
+- An **Internet Gateway** connects a VPC to the internet. It has to be **attached** to the VPC before it works, and a VPC can have only one.
+- A **route table** decides where traffic goes. The **local** route keeps traffic within the VPC, and the **`0.0.0.0/0`** route sends everything else to the Internet Gateway.
+- Every VPC has a **main route table**, and any subnet not associated with a different route table uses it.
+- A subnet whose route table has a route to an Internet Gateway is called a **public subnet**. Because I added the route to the main route table, both of my subnets became public.
+- **Auto-assign public IP** can be turned on per instance at launch or as a default on the **subnet** itself.
+
+---
+
+## Cleanup
+
+After finishing the lab, I deleted everything I created so it wouldn't keep incurring charges. Running instances are billed by the hour along with their public IPv4 addresses. The VPC, subnets, Internet Gateway, and route tables are free, but I removed them to keep my account tidy.
+
+### 1. Terminated the instances
+
+In the EC2 console, I selected `Server-1` and `Server-2` and clicked **Instance state** → **Terminate (delete) instance**. I waited until both showed **Terminated**, since the VPC's other resources can't be deleted while instances are still using them.
+
+### 2. Deleted the security groups
+
+I went to **Security Groups**, filtered by `myfirst-vpc`, and deleted the security groups created for the instances. I left the VPC's **default** security group alone, since it can't be deleted on its own and is removed along with the VPC.
+
+### 3. Detached and deleted the Internet Gateway
+
+In the VPC console, I went to **Internet Gateways**, selected `IGW`, and clicked **Actions** → **Detach from VPC**. Once its state showed **Detached**, I clicked **Actions** → **Delete internet gateway** and confirmed.
+
+### 4. Deleted the subnets
+
+I went to **Subnets**, selected `Subnet-1` and `Subnet-2`, clicked **Actions** → **Delete subnet**, and confirmed.
+
+### 5. Deleted the VPC
+
+I went to **Your VPCs**, selected `myfirst-vpc`, and clicked **Actions** → **Delete VPC**. This also removed its main route table, including the `0.0.0.0/0` route, along with its main network ACL and default security group.
+
+### 6. Confirmed nothing was left
+
+I checked that **Your VPCs** listed only the default VPC, and that the **Instances**, **Subnets**, and **Internet Gateways** pages didn't show anything from this lab. I made sure not to delete the default VPC or its Internet Gateway, which other labs rely on.

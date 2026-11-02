@@ -18,7 +18,8 @@
       "Bash(taskkill:*)",
       "WebFetch(domain:rehype-pretty.pages.dev)",
       "Bash(del \"C:\\Users\\NEWEGG THANK YOU\\WebstormProjects\\alamin-s-portfolio\\components\\code-block-wrapper.tsx\")",
-      "Bash(cmd /c \"taskkill /PID 51924 /F\")"
+      "Bash(cmd /c \"taskkill /PID 51924 /F\")",
+      "Bash(unzip:*)"
     ],
     "deny": [],
     "ask": []

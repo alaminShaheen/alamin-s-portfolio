@@ -1,0 +1,155 @@
+---
+title: "Creating Public and Private Subnets"
+description: "How I divided my custom VPC into two public and two private subnets across two Availability Zones, and used a dedicated route table so only the public subnets could reach the internet."
+date: "2026-05-22"
+tags: ["aws", "vpc", "subnet", "route-table", "internet-gateway", "networking", "lab"]
+---
+
+## Summary
+
+In this lab I rebuilt the network inside `myfirst-vpc` using a common AWS design: public and private subnets spread across two Availability Zones. I split the VPC's `192.168.0.0/24` range (`192.168.0.0` to `192.168.0.255`) into four `/26` subnets, two public and two private, with one of each in `ca-central-1a` and `ca-central-1b`. I created and attached an Internet Gateway, then created a separate route table called `RT-Public` with a route to the Internet Gateway and associated it only with the public subnets. The private subnets stayed on the VPC's main route table, which has no internet route, so they remained isolated from the internet.
+
+## Network Design
+
+| Subnet | Availability Zone | IPv4 CIDR | Address range | Usable IPs | Route table |
+| --- | --- | --- | --- | --- | --- |
+| `Public-Subnet-1` | `ca-central-1a` | `192.168.0.0/26` | `.0` – `.63` | 59 | `RT-Public` |
+| `Public-Subnet-2` | `ca-central-1b` | `192.168.0.64/26` | `.64` – `.127` | 59 | `RT-Public` |
+| `Private-Subnet-1` | `ca-central-1a` | `192.168.0.128/26` | `.128` – `.191` | 59 | Main route table |
+| `Private-Subnet-2` | `ca-central-1b` | `192.168.0.192/26` | `.192` – `.255` | 59 | Main route table |
+
+| Resource | Details |
+| --- | --- |
+| Region | Canada (Central) `ca-central-1` |
+| VPC | `myfirst-vpc` |
+| VPC IPv4 CIDR | `192.168.0.0/24` (`192.168.0.0` – `192.168.0.255`, 256 addresses) |
+| Internet Gateway | `IGW`, attached to `myfirst-vpc` |
+| `RT-Public` routes | `192.168.0.0/24` → `local`, `0.0.0.0/0` → `IGW` |
+| Main route table routes | `192.168.0.0/24` → `local` only |
+
+Each Availability Zone has one public and one private subnet, so if one AZ has a problem, the other AZ still has both kinds of subnet available.
+
+---
+
+## Part 1: Clearing Out the Previous Setup
+
+This lab reused `myfirst-vpc` from the earlier VPC labs, so I first removed the resources from the previous lab that this one would recreate.
+
+1. **Terminated the instances.** In the EC2 console, I terminated `Server-1` and `Server-2`, because subnets can't be deleted while instances are running in them.
+2. **Removed the old internet route.** In the VPC console, under **Route tables**, I opened the VPC's main route table and deleted the `0.0.0.0/0` → `IGW` route from the previous lab. In this lab, the main route table would be used by the private subnets, so it couldn't keep a route to the internet.
+3. **Detached and deleted the Internet Gateway.** Under **Internet Gateways**, I selected the old `IGW`, clicked **Actions** → **Detach from VPC**, and then **Actions** → **Delete internet gateway**.
+4. **Deleted the old subnets.** Under **Subnets**, I deleted `Subnet-1` and `Subnet-2`, which freed up the VPC's entire `192.168.0.0/24` range.
+
+---
+
+## Part 2: Creating Four Subnets
+
+### 1. Planned the address ranges
+
+I needed four subnets inside a `/24`. Borrowing 2 bits gives 2² = 4 subnets, so each one is a **`/26`** with 2⁶ = **64** addresses, or **59 usable** after AWS reserves 5. The four `/26` ranges start at `.0`, `.64`, `.128`, and `.192`.
+
+### 2. Created all four subnets at once
+
+In the VPC console, I went to **Subnets** and clicked **Create subnet**, then selected `myfirst-vpc`. Instead of creating the subnets one at a time, I filled in the first one and clicked **Add new subnet** for each of the others, so all four were created in a single operation:
+
+| Subnet | Name | Availability Zone | IPv4 subnet CIDR |
+| --- | --- | --- | --- |
+| 1 of 4 | `Public-Subnet-1` | `ca-central-1a` | `192.168.0.0/26` |
+| 2 of 4 | `Public-Subnet-2` | `ca-central-1b` | `192.168.0.64/26` |
+| 3 of 4 | `Private-Subnet-1` | `ca-central-1a` | `192.168.0.128/26` |
+| 4 of 4 | `Private-Subnet-2` | `ca-central-1b` | `192.168.0.192/26` |
+
+The console showed **64 IPs** next to each CIDR block.
+
+### 3. Verified the subnets
+
+I clicked **Create subnet**, and the console created the four subnets one after another. All four appeared as **Available**, each with **59** available IPv4 addresses, with one public and one private subnet in each AZ.
+
+At this point the names "public" and "private" were only labels. A subnet's name doesn't make it public or private. What makes the difference is which route table it uses, which I set up next.
+
+---
+
+## Part 3: Creating and Attaching the Internet Gateway
+
+In the VPC console, I went to **Internet Gateways**, clicked **Create internet gateway**, named it `IGW`, and created it. Then I clicked **Actions** → **Attach to VPC**, selected `myfirst-vpc`, and attached it. Its state changed to **Attached**.
+
+---
+
+## Part 4: Checking the Main Route Table
+
+I went to **Route tables** and filtered by `myfirst-vpc`. There was one route table, marked **Main: Yes**, which AWS created along with the VPC.
+
+On its **Subnet associations** tab, all four subnets were listed under **Subnets without explicit associations**. Any subnet that isn't explicitly associated with a route table automatically uses the main route table. Its only route was `192.168.0.0/24` → `local`, so none of the subnets had internet access yet.
+
+---
+
+## Part 5: Creating a Route Table for the Public Subnets
+
+### 1. Created RT-Public
+
+On the **Route tables** page, I clicked **Create route table**, entered the name `RT-Public`, selected `myfirst-vpc`, and clicked **Create route table**. A new route table starts with only the `local` route.
+
+### 2. Associated it with the public subnets
+
+On the **Subnet associations** tab of `RT-Public`, I clicked **Edit subnet associations**, checked `Public-Subnet-1` and `Public-Subnet-2`, and clicked **Save associations**.
+
+These two subnets were now **explicitly associated** with `RT-Public`, so they stopped using the main route table. The two private subnets were left unchecked, so they kept using the main route table.
+
+### 3. Added the internet route
+
+On the **Routes** tab of `RT-Public`, I clicked **Edit routes**, then **Add route**:
+
+- **Destination:** `0.0.0.0/0`
+- **Target:** **Internet Gateway** → `IGW`
+
+I clicked **Save changes**.
+
+### 4. Verified the routes
+
+The **Routes** tab of `RT-Public` showed two routes, both **Active**:
+
+| Destination | Target | Status |
+| --- | --- | --- |
+| `0.0.0.0/0` | `IGW` | Active |
+| `192.168.0.0/24` | `local` | Active |
+
+The public subnets now had a route to the internet through `RT-Public`. The private subnets were still on the main route table, which only had the `local` route, so they could reach other resources inside the VPC but had no direct path to or from the internet.
+
+---
+
+## What I Learned
+
+- A subnet is **public** if its route table has a route to an **Internet Gateway**, and **private** if it doesn't. The subnet's name has nothing to do with it.
+- Every VPC has a **main route table**. Any subnet without an **explicit association** uses it automatically.
+- Creating a **separate route table** for public subnets, instead of adding the internet route to the main route table, keeps new subnets **private by default**. If someone creates a subnet later and forgets to associate it, it won't accidentally be exposed to the internet.
+- A subnet can be associated with **only one route table** at a time, but one route table can be shared by **many subnets**.
+- Splitting a `/24` into four `/26` subnets gives **64 addresses** each, or **59 usable** in AWS.
+- Putting **one public and one private subnet in each AZ** is a common highly available design. For example, web servers or load balancers go in the public subnets, and databases or application servers go in the private subnets, with each tier running in both AZs.
+- Instances in the private subnets can't reach the internet at all with this setup, not even for software updates. Giving them **outbound-only** internet access would require a **NAT gateway** in a public subnet and a route to it in the private route table.
+- Being in a public subnet isn't enough by itself for an instance to be reachable. It also needs a **public IP**, so for later labs I'd turn on **auto-assign public IPv4 address** on the public subnets, plus a **security group** that allows the traffic.
+
+---
+
+## Cleanup
+
+The VPC, subnets, Internet Gateway, and route tables are free, and I didn't launch any instances in this lab, so nothing here was incurring charges. If I weren't continuing to later VPC labs, I would clean up in this order:
+
+### 1. Deleted RT-Public
+
+On the **Subnet associations** tab of `RT-Public`, I clicked **Edit subnet associations**, unchecked both public subnets, and saved, so they went back to using the main route table. Then I selected `RT-Public` and clicked **Actions** → **Delete route table**. A route table can't be deleted while subnets are still explicitly associated with it.
+
+### 2. Detached and deleted the Internet Gateway
+
+Under **Internet Gateways**, I selected `IGW`, clicked **Actions** → **Detach from VPC**, and then **Actions** → **Delete internet gateway**.
+
+### 3. Deleted the subnets
+
+Under **Subnets**, I selected all four subnets, clicked **Actions** → **Delete subnet**, and confirmed.
+
+### 4. Deleted the VPC
+
+Under **Your VPCs**, I selected `myfirst-vpc`, clicked **Actions** → **Delete VPC**, and confirmed. This also removed the main route table, the main network ACL, and the default security group.
+
+### 5. Confirmed nothing was left
+
+I checked that **Your VPCs** listed only the default VPC, and that **Subnets**, **Route tables**, and **Internet Gateways** didn't show anything from this lab. I made sure not to delete the default VPC or its Internet Gateway.

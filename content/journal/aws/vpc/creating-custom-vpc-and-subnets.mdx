@@ -1,0 +1,127 @@
+---
+title: "Creating a Custom VPC and Subnet"
+description: "How I created a custom Amazon VPC with its own IPv4 CIDR block and added a subnet in a single Availability Zone, laying the network foundation for deploying AWS resources."
+date: "2026-05-21"
+order: 2
+tags: ["aws", "vpc", "subnet", "networking", "cidr", "lab"]
+---
+
+## Summary
+
+In this lab I built a custom network in AWS instead of using the default VPC. I created a VPC called `myfirst-vpc` with the IPv4 CIDR block `192.168.0.0/24`, which defined the range of private IP addresses available inside it. I then created a subnet called `Subnet-1` inside that VPC, placed it in a single Availability Zone, and gave it a CIDR block within the VPC's range. This set up the basic network that other AWS resources, like EC2 instances, could later be launched into.
+
+## Lab Environment
+
+| Setting | Value |
+| --- | --- |
+| Region | Canada (Central) `ca-central-1` |
+| VPC name | `myfirst-vpc` |
+| VPC IPv4 CIDR | `192.168.0.0/24` (256 addresses) |
+| IPv6 CIDR | None |
+| Tenancy | Default |
+| Subnet name | `Subnet-1` |
+| Subnet Availability Zone | `ca-central-1a` |
+| Subnet IPv4 CIDR | `192.168.0.0/24` |
+
+---
+
+## Part 1: Creating the VPC
+
+### 1. Checked the region
+
+Before creating anything, I checked the region selector in the top-right corner of the AWS Console and made sure it was set to **Canada (Central)**. VPCs and subnets exist in a single region, so everything in this lab had to be created in the same one.
+
+### 2. Opened the VPC console
+
+I searched for **VPC** in the AWS Console, opened the **VPC dashboard**, went to **Your VPCs**, and clicked **Create VPC**.
+
+### 3. Chose the VPC settings
+
+Under **VPC settings**, I selected **VPC only**. The other option, **VPC and more**, would also have created subnets, route tables, and gateways automatically, but I wanted to build each piece myself to understand how they fit together.
+
+I configured the VPC with these settings:
+
+| Setting | Value |
+| --- | --- |
+| Name tag | `myfirst-vpc` |
+| IPv4 CIDR block | IPv4 CIDR manual input |
+| IPv4 CIDR | `192.168.0.0/24` |
+| IPv6 CIDR block | No IPv6 CIDR block |
+| Tenancy | Default |
+| VPC encryption control | None |
+
+I gave the VPC a clear name so I could easily pick it out later when configuring subnets and other services. The CIDR block `192.168.0.0/24` gave the VPC 256 private IP addresses, from `192.168.0.0` to `192.168.0.255`. AWS requires a VPC's CIDR block to be between `/16` and `/28`.
+
+### 4. Created the VPC
+
+I clicked **Create VPC**. The new VPC appeared with a state of **Available** and its IPv4 CIDR of `192.168.0.0/24`.
+
+AWS also created a few resources for the VPC automatically:
+
+- A **main route table**, which controls where network traffic in the VPC is sent.
+- A **main network ACL**, a firewall at the subnet level that allows all traffic by default.
+- A **DHCP option set**, which hands out network settings to resources in the VPC.
+
+In the details panel, **DNS resolution** was **Enabled** and **DNS hostnames** was **Disabled**, which are the defaults for a custom VPC.
+
+---
+
+## Part 2: Creating the Subnet
+
+### 1. Opened the Subnets page
+
+In the VPC dashboard's left menu, I clicked **Subnets**, then **Create subnet**.
+
+### 2. Selected the VPC
+
+Under **VPC ID**, I selected `myfirst-vpc` (`192.168.0.0/24`) from the dropdown, so the subnet would be created inside my new VPC rather than the default one (`172.31.0.0/16`).
+
+### 3. Configured the subnet
+
+Under **Subnet settings**, I entered:
+
+| Setting | Value |
+| --- | --- |
+| Subnet name | `Subnet-1` |
+| Availability Zone | Canada (Central) / `ca-central-1a` |
+| IPv4 VPC CIDR block | `192.168.0.0/24` |
+| IPv4 subnet CIDR block | `192.168.0.0/24` |
+
+A subnet can only exist in one Availability Zone, so I chose `ca-central-1a` on purpose. Any resource launched into `Subnet-1` would run in that AZ.
+
+The subnet's CIDR block had to fall within the VPC's range. I used the full `/24`, so the console showed **256 IPs** for the subnet.
+
+### 4. Created the subnet
+
+I clicked **Create subnet**. `Subnet-1` appeared in the list with a state of **Available**, attached to `myfirst-vpc`, with the IPv4 CIDR `192.168.0.0/24`.
+
+---
+
+## What I Learned
+
+- A **VPC (Virtual Private Cloud)** is my own isolated network inside AWS. Resources in it can talk to each other privately, and nothing gets in or out unless I set it up to.
+- A **CIDR block** defines a range of IP addresses. The number after the slash says how many addresses are in the range. A `/24` fixes the first 24 bits of the address, leaving 8 bits, or 256 addresses. A smaller number means a bigger range, so a `/16` has 65,536 addresses.
+- `192.168.0.0/24` is a **private** range, meaning it isn't used on the public internet. VPCs normally use private ranges like `10.0.0.0/8`, `172.16.0.0/12`, or `192.168.0.0/16`.
+- A **subnet** is a smaller section of a VPC's address range, and each subnet lives in exactly **one Availability Zone**. To spread resources across AZs, I'd need a subnet in each AZ.
+- A subnet's CIDR block must **fit inside** the VPC's CIDR block, and subnets in the same VPC can't overlap.
+- AWS **reserves 5 IP addresses** in every subnet (the first four and the last one), so a `/24` subnet has 251 usable addresses, not 256.
+- Because `Subnet-1` used the VPC's entire `/24` range, there was no room left for a second subnet. In a real design, I would split the range up, for example into two `/25` subnets of 128 addresses each, one per AZ.
+- This VPC has **no internet gateway** yet, so nothing in `Subnet-1` can reach the internet or be reached from it. Making a subnet public requires an internet gateway and a route to it in the route table.
+
+---
+
+## Cleanup
+
+VPCs and subnets don't cost anything on their own, but I deleted them after the lab to keep my account tidy and avoid confusion with later labs.
+
+### 1. Deleted the subnet
+
+In the VPC console, I went to **Subnets**, selected `Subnet-1`, clicked **Actions** → **Delete subnet**, typed `delete` to confirm, and clicked **Delete**. A subnet can only be deleted once nothing is running in it, and nothing was in this lab.
+
+### 2. Deleted the VPC
+
+I went to **Your VPCs**, selected `myfirst-vpc`, clicked **Actions** → **Delete VPC**, typed `delete` to confirm, and clicked **Delete**. This also removed the resources AWS had created along with the VPC: the main route table, the main network ACL, and the VPC's default security group.
+
+### 3. Confirmed nothing was left
+
+I checked that **Your VPCs** listed only the default VPC and that **Subnets** didn't show `Subnet-1`. I made sure not to delete the **default VPC**, since earlier labs relied on it and it's what EC2 uses when no other VPC is chosen.

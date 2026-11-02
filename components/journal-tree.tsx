@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { ChevronRight, Folder, FileText } from "lucide-react"
 import { motion, AnimatePresence } from "motion/react"
@@ -9,6 +10,13 @@ import type { TreeNode } from "@/lib/journal"
 
 type JournalTreeProps = {
   tree: TreeNode[]
+}
+
+// Map folder names to custom icons
+const folderIcons: Record<string, string> = {
+  aws: "/icons/aws/aws.svg",
+  ec2: "/icons/aws/ec2.svg",
+  vpc: "/icons/aws/vpc.svg",
 }
 
 function TreeNodeItem({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
@@ -46,7 +54,17 @@ function TreeNodeItem({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
         >
           <ChevronRight className="w-3 h-3 shrink-0" />
         </motion.div>
-        <Folder className="w-4 h-4 shrink-0 text-accent" />
+        {folderIcons[node.name] ? (
+          <Image
+            src={folderIcons[node.name]}
+            alt={node.name}
+            width={16}
+            height={16}
+            className="w-4 h-4 shrink-0"
+          />
+        ) : (
+          <Folder className="w-4 h-4 shrink-0 text-accent" />
+        )}
         <span className="truncate">{node.name}</span>
       </button>
 

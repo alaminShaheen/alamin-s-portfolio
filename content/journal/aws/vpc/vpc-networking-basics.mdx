@@ -1,0 +1,204 @@
+---
+title: "VPC Networking Basics: CIDR and Subnetting"
+description: "A quick reference for IPv4 addresses, CIDR notation, counting total and usable IPs, and calculating subnets in AWS VPCs."
+date: "2026-05-21"
+order: 1
+tags: ["aws", "vpc", "subnet", "cidr", "networking", "reference"]
+---
+
+## VPCs and Subnets
+
+- A **VPC (Virtual Private Cloud)** is an isolated private network in one AWS region. Its CIDR block defines the range of private IP addresses available inside it.
+- A **subnet** is a smaller section of a VPC's address range. Each subnet lives in exactly **one Availability Zone**, so spreading resources across AZs requires a subnet in each one.
+- A subnet's range must fit **inside** the VPC's range, and subnets in the same VPC can't overlap.
+- VPCs normally use **private** ranges that aren't used on the public internet: `10.0.0.0/8`, `172.16.0.0/12`, or `192.168.0.0/16`.
+
+---
+
+## IPv4 Addresses
+
+An IPv4 address like `192.168.0.10` is **32 bits**, split into 4 groups of 8 bits called **octets**. Each octet runs from 0 to 255.
+
+```
+192      .168      .0        .10
+11000000 .10101000 .00000000 .00001010
+```
+
+---
+
+## CIDR Notation
+
+CIDR writes a range of addresses as **starting address / prefix length**, for example `192.168.0.0/24`.
+
+- The number after the slash is how many bits, counting from the left, are **fixed**. These bits are the **network part** and are the same for every address in the range.
+- The remaining **32 − prefix** bits are free to change. These are the **host part**, and they make up the individual addresses.
+
+For `192.168.0.0/24`, the first 24 bits (`192.168.0`) are fixed and 8 bits are free, so the last octet can go from 0 to 255.
+
+A **smaller prefix means a bigger range**. A `/16` has far more addresses than a `/24`.
+
+### When the prefix isn't a multiple of 8
+
+`/8`, `/16`, and `/24` are easy because the fixed bits end exactly at the end of an octet. With any other prefix, like `/20`, the line between fixed and free bits falls **in the middle of an octet**, so that octet is partly fixed and partly free.
+
+**Example: `10.0.16.0/20`**
+
+- **Fixed bits:** 20, so the first two octets (16 bits) plus the first **4 bits** of the third octet.
+- **Free bits:** 32 − 20 = 12, so the last **4 bits** of the third octet plus all 8 bits of the fourth octet.
+
+Writing the third octet, 16, in binary shows the split:
+
+```
+10       .0        .0001 0000 .00000000
+fixed    fixed      fixed|free  free
+```
+
+The fixed part of the third octet is `0001`. The free part can be anything from `0000` to `1111`, so the third octet can range from:
+
+- `0001 0000` = **16**
+- to `0001 1111` = **31**
+
+The fourth octet is fully free, so it goes from 0 to 255.
+
+| | Value |
+| --- | --- |
+| Range | `10.0.16.0` to `10.0.31.255` |
+| Total IPs | 2¹² = **4,096** |
+| Usable in AWS | 4,096 − 5 = **4,091** |
+
+A quicker way to find the range without binary: a `/20` has 4 free bits in the third octet, so that octet moves in steps of 2⁴ = **16**. The range starts at 16 and covers 16 values, ending at 16 + 16 − 1 = **31**.
+
+The same idea works for any prefix. Find the octet where the split happens, work out how many free bits are in it, and the block size in that octet is 2^(free bits).
+
+---
+
+## Counting IP Addresses
+
+### Formulas
+
+| What | Formula |
+| --- | --- |
+| Host bits | 32 − prefix |
+| Total IPs | 2^(host bits) |
+| Usable IPs (normal networks) | Total − 2 |
+| Usable IPs (AWS) | Total − 5 |
+
+On a normal network, the first address (network address) and the last address (broadcast address) can't be assigned to devices. AWS reserves **5** addresses in every subnet instead of 2.
+
+### AWS reserved addresses
+
+For a subnet of `192.168.0.0/24`:
+
+| Address | Reserved for |
+| --- | --- |
+| `192.168.0.0` | Network address |
+| `192.168.0.1` | VPC router |
+| `192.168.0.2` | DNS server |
+| `192.168.0.3` | Reserved by AWS for future use |
+| `192.168.0.255` | Broadcast address (AWS doesn't support broadcast but still reserves it) |
+
+### Common sizes
+
+| CIDR | Host bits | Total IPs | Usable (normal) | Usable (AWS) |
+| --- | --- | --- | --- | --- |
+| `/16` | 16 | 65,536 | 65,534 | 65,531 |
+| `/20` | 12 | 4,096 | 4,094 | 4,091 |
+| `/24` | 8 | 256 | 254 | 251 |
+| `/25` | 7 | 128 | 126 | 123 |
+| `/26` | 6 | 64 | 62 | 59 |
+| `/27` | 5 | 32 | 30 | 27 |
+| `/28` | 4 | 16 | 14 | 11 |
+
+Each **+1 to the prefix halves the size**, and each −1 doubles it.
+
+AWS allows VPC and subnet CIDR blocks from **`/16`** (largest) to **`/28`** (smallest).
+
+### Worked example: `10.0.0.0/26`
+
+1. Host bits = 32 − 26 = **6**
+2. Total IPs = 2⁶ = **64**
+3. Usable in AWS = 64 − 5 = **59**
+4. Range: start at `10.0.0.0`, add 64, subtract 1, so `10.0.0.0` to `10.0.0.63`
+5. First usable address in AWS: `10.0.0.4`. Last usable: `10.0.0.62`
+
+---
+
+## Subnetting
+
+Subnetting means splitting a larger range into smaller ones. Each extra bit added to the prefix **doubles the number of subnets** and **halves the size of each one**.
+
+### Example: splitting `192.168.0.0/24`
+
+| Split into | New prefix | Size of each | Subnets |
+| --- | --- | --- | --- |
+| 2 | `/25` | 128 | `.0–.127`, `.128–.255` |
+| 4 | `/26` | 64 | `.0–.63`, `.64–.127`, `.128–.191`, `.192–.255` |
+| 8 | `/27` | 32 | `.0–.31`, `.32–.63`, … `.224–.255` |
+
+### Finding subnet ranges
+
+Each subnet starts at a **multiple of its size**. A `/26` has 64 addresses, so `/26` subnets start at `.0`, `.64`, `.128`, and `.192`.
+
+### Checking whether a subnet is valid
+
+With a VPC of `192.168.0.0/24`:
+
+| Subnet | Valid? | Why |
+| --- | --- | --- |
+| `192.168.0.64/26` | ✅ | Covers `.64–.127`, inside the VPC, and starts on a multiple of 64 |
+| `192.168.1.0/26` | ❌ | Outside the VPC's `192.168.0.x` range |
+| `192.168.0.32/26` | ❌ | Doesn't start on a multiple of 64, so it isn't a valid `/26` boundary |
+
+---
+
+## Calculating How Many Subnets
+
+### 1. Both prefixes known: how many subnets fit?
+
+> **Subnets = 2^(new prefix − old prefix)**
+
+The difference between the prefixes is how many bits were borrowed from the host part.
+
+| VPC | Subnet size | Calculation | Subnets |
+| --- | --- | --- | --- |
+| `/16` | `/24` | 2^(24 − 16) = 2⁸ | 256 |
+| `/24` | `/27` | 2^(27 − 24) = 2³ | 8 |
+| `/20` | `/22` | 2^(22 − 20) = 2² | 4 |
+
+### 2. Number of subnets known: what prefix should they be?
+
+Find the smallest number of bits where 2^bits is at least the number of subnets needed, then add those bits to the VPC's prefix.
+
+> **New prefix = old prefix + bits borrowed**
+
+**Example:** a VPC of `10.0.0.0/16` needs **6 subnets**.
+
+- 2² = 4, which isn't enough
+- 2³ = 8, which is enough, so borrow **3 bits**
+- New prefix = 16 + 3 = **`/19`**
+- Result: 8 subnets (2 spare), each with 2^(32 − 19) = **8,192 IPs**
+
+### 3. Hosts per subnet known: what prefix, and how many subnets?
+
+Find the smallest number of host bits where 2^bits − 5 (for AWS) is at least the number of hosts needed.
+
+> **Subnet prefix = 32 − host bits**
+
+Then use formula 1 to find how many of those subnets fit in the VPC.
+
+**Example:** a VPC of `192.168.0.0/24` needs subnets with at least **50 hosts** each.
+
+- 2⁵ − 5 = 27, which isn't enough
+- 2⁶ − 5 = 59, which is enough, so use **6 host bits**
+- Subnet prefix = 32 − 6 = **`/26`**
+- Number of subnets = 2^(26 − 24) = **4 subnets**, each with 59 usable IPs
+
+---
+
+## Powers of 2
+
+Memorizing these makes most subnet questions a single subtraction and a lookup.
+
+| Bits | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2^bits | 2 | 4 | 8 | 16 | 32 | 64 | 128 | 256 |
