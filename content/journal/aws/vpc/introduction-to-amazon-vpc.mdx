@@ -1,0 +1,219 @@
+---
+title: "Introduction to Amazon VPC"
+description: "An overview of Amazon Virtual Private Cloud (VPC): what it is, its core components, how traffic flows in and out, common network designs, and what it's used for."
+date: "2026-05-22"
+order: 0
+tags: ["aws", "vpc", "networking", "cloud", "reference"]
+---
+
+
+## What Is a VPC?
+
+**Amazon VPC (Virtual Private Cloud)** is your own private, isolated network inside AWS. It's where resources like [EC2](/journal/aws/ec2/introduction-to-amazon-ec2) instances, databases, and load balancers live and communicate. You decide its IP address range, how it's divided into subnets, how traffic is routed, and what's allowed in and out.
+
+A VPC works much like a traditional network in an office or data center, but it's fully software-defined. There's no physical hardware to buy or cable, and changes take effect in seconds.
+
+Key characteristics:
+
+- A VPC exists in **one region**, but it spans **all Availability Zones** in that region.
+- Resources in different VPCs are **isolated** from each other by default.
+- Nothing can enter or leave a VPC unless you set up a path for it.
+
+---
+
+## Default VPC vs Custom VPC
+
+| | Default VPC | Custom VPC |
+| --- | --- | --- |
+| **Created by** | AWS, automatically in every region | You |
+| **CIDR block** | `172.31.0.0/16` | Your choice, from `/16` to `/28` |
+| **Subnets** | One public subnet in each AZ | None until you create them |
+| **Internet access** | Already set up, with an Internet Gateway and a route to it | None until you add it |
+| **Public IPs** | Assigned to instances automatically | Off by default |
+| **Best for** | Quick testing and learning | Real applications, where you control the design |
+
+The default VPC is convenient but makes every subnet public. Production workloads normally use a custom VPC with a deliberate mix of public and private subnets.
+
+---
+
+## Core Components
+
+### CIDR block
+
+The **CIDR block** defines the VPC's range of private IP addresses, for example `192.168.0.0/24` or `10.0.0.0/16`. Every resource in the VPC gets an address from this range. VPCs normally use private ranges: `10.0.0.0/8`, `172.16.0.0/12`, or `192.168.0.0/16`. See **VPC Networking Basics** for how CIDR notation and subnet sizing work.
+
+### Subnets
+
+A **subnet** is a smaller section of the VPC's address range. Each subnet lives in exactly **one Availability Zone**, so placing resources in different AZs means using different subnets.
+
+- A **public subnet** has a route to an **Internet Gateway**, so resources in it can be reached from the internet (if they also have a public IP and the security group allows it).
+- A **private subnet** has no route to an Internet Gateway, so resources in it can't be reached directly from the internet.
+
+A subnet's name doesn't make it public or private. Its **route table** does.
+
+### Route tables
+
+A **route table** is a set of rules that decide where network traffic goes. Each rule, or **route**, has:
+
+- A **destination**: where the traffic is headed, as a CIDR range.
+- A **target**: where to send it next.
+
+Every route table includes a **local** route for the VPC's own CIDR block, which lets all resources in the VPC reach each other. When traffic matches more than one route, the **most specific** route (the longest prefix) wins.
+
+Every VPC has a **main route table**. Any subnet that isn't explicitly associated with another route table uses it. A common practice is to keep the main route table private and create a separate route table for public subnets.
+
+### Internet Gateway (IGW)
+
+An **Internet Gateway** connects a VPC to the internet. It has to be **attached** to the VPC, and a VPC can have only one. To use it, a route table needs a route like `0.0.0.0/0` → IGW.
+
+The Internet Gateway also translates between an instance's **private IP** (which the instance sees) and its **public IP** (which the internet sees).
+
+### NAT Gateway
+
+A **NAT Gateway** gives resources in **private subnets** **outbound-only** internet access. They can download updates or call external APIs, but nothing on the internet can start a connection to them.
+
+The NAT Gateway sits in a **public subnet**, and the private subnets' route table gets a route like `0.0.0.0/0` → NAT Gateway. For high availability, one NAT Gateway is usually placed in each AZ.
+
+### Elastic IP
+
+An **Elastic IP** is a static public IPv4 address that stays the same until you release it. A regular public IP changes whenever an instance is stopped and started. Elastic IPs are also required for NAT Gateways.
+
+---
+
+## Security Layers
+
+A VPC has two layers of firewall:
+
+| | Security group | Network ACL (NACL) |
+| --- | --- | --- |
+| **Applies to** | Individual resources, like an [EC2](http://localhost:5173/journal/aws/ec2/introduction-to-amazon-ec2) instance | An entire subnet |
+| **Rules** | Allow rules only | Allow and deny rules |
+| **Remembers connections?** | Yes, it's **stateful**: replies are automatically allowed | No, it's **stateless**: replies need their own rule |
+| **Rule order** | All rules are checked together | Rules are checked in number order, and the first match wins |
+| **Default behavior** | Blocks all inbound, allows all outbound | The default NACL allows everything in both directions |
+
+Most day-to-day traffic control is done with **security groups**. NACLs are useful as an extra safety net, for example to block a specific IP range across a whole subnet.
+
+### Inbound and outbound
+
+- **Inbound** rules control traffic coming **into** a resource, started by someone else.
+- **Outbound** rules control traffic going **out of** a resource, started by the resource itself.
+
+Every connection is outbound for one side and inbound for the other, so rules are always checked on the side being connected to.
+
+---
+
+## How Traffic Flows
+
+### From an instance to the internet
+
+1. An instance in a public subnet sends a request to an address outside the VPC.
+2. The subnet's route table matches it to `0.0.0.0/0` → Internet Gateway.
+3. The Internet Gateway swaps the instance's private IP for its public IP and sends the traffic out.
+
+### From the internet to an instance
+
+1. Traffic arrives at the Internet Gateway, addressed to the instance's public IP.
+2. The Internet Gateway swaps the destination to the instance's private IP.
+3. The `local` route delivers it to the instance's subnet.
+4. The **network ACL** and then the **security group** check whether it's allowed in.
+5. The instance's reply goes back out through the `0.0.0.0/0` route.
+
+For an instance to be reachable from the internet, it needs **all** of these: a public IP, an attached Internet Gateway, a `0.0.0.0/0` route to it in the subnet's route table, and a security group rule allowing the traffic. If any one is missing, the connection fails.
+
+---
+
+## Connecting VPCs to Other Networks
+
+| Option | What it connects | Notes |
+| --- | --- | --- |
+| **VPC Peering** | Two VPCs, in the same or different accounts and regions | Private connection between exactly two VPCs. Their CIDR ranges can't overlap |
+| **Transit Gateway** | Many VPCs and on-premises networks | A central hub, simpler than peering every VPC to every other |
+| **Site-to-Site VPN** | A VPC and an on-premises network | Encrypted tunnel over the public internet |
+| **AWS Direct Connect** | A VPC and an on-premises network | A dedicated private network line, with more consistent performance |
+| **VPC Endpoints** | A VPC and AWS services like S3 or DynamoDB | Lets private resources reach AWS services without going over the internet |
+
+---
+
+## A Common Design: Public and Private Subnets Across Two AZs
+
+```
+                    Internet
+                       │
+                Internet Gateway
+                       │
+   ┌───────────── VPC 10.0.0.0/16 ─────────────┐
+   │                                           │
+   │   AZ a                    AZ b            │
+   │   ┌─────────────────┐    ┌──────────────┐ │
+   │   │ Public subnet   │    │ Public subnet│ │
+   │   │ Load balancer,  │    │ Load balancer│ │
+   │   │ NAT Gateway     │    │ NAT Gateway  │ │
+   │   └─────────────────┘    └──────────────┘ │
+   │   ┌─────────────────┐    ┌──────────────┐ │
+   │   │ Private subnet  │    │Private subnet│ │
+   │   │ App servers,    │    │ App servers, │ │
+   │   │ databases       │    │ databases    │ │
+   │   └─────────────────┘    └──────────────┘ │
+   └───────────────────────────────────────────┘
+```
+
+- **Public subnets** hold only what must face the internet, such as load balancers and NAT Gateways.
+- **Private subnets** hold application servers and databases, which can't be reached directly from the internet.
+- Each tier runs in **both AZs**, so the application keeps working if one AZ has a problem.
+
+---
+
+## Common Use Cases
+
+### Hosting secure web applications
+
+Web-facing components go in public subnets, while application logic and data stay in private subnets. Users reach the application only through the parts meant to be public.
+
+### Isolating environments
+
+Separate VPCs, or separate subnets, keep **development**, **testing**, and **production** environments apart, so a mistake in one can't affect the others.
+
+### Protecting sensitive data
+
+Databases and internal services run in private subnets with tight security group rules, which helps meet security and compliance requirements.
+
+### Extending an on-premises network
+
+With a VPN or Direct Connect, a VPC can act as an extension of a company's existing data center, letting on-premises systems and cloud resources communicate privately.
+
+### Multi-tier architectures
+
+Each tier of an application (web, application, database) can have its own subnets and security groups, with rules that only allow each tier to talk to the ones next to it.
+
+### Connecting multiple teams or accounts
+
+Large organizations often give each team its own VPC and connect them with **VPC Peering** or a **Transit Gateway**, keeping teams independent while still letting them share services.
+
+---
+
+## Pricing
+
+Creating a VPC, subnets, route tables, Internet Gateways, security groups, and network ACLs is **free**. Costs come from certain components and from traffic:
+
+| Component | Charged for |
+| --- | --- |
+| **NAT Gateway** | Every hour it exists, plus each GB of data it processes |
+| **Public IPv4 addresses** | Every hour an address is assigned, including Elastic IPs |
+| **Interface VPC Endpoints** | Every hour they exist, plus data processed |
+| **Site-to-Site VPN** | Every hour the connection is up |
+| **Transit Gateway** | Every hour per attachment, plus data processed |
+| **Data transfer** | Data sent out to the internet, and data sent between Availability Zones or regions |
+
+A forgotten NAT Gateway is one of the most common causes of surprise charges in lab accounts.
+
+---
+
+## Key Takeaways
+
+- A VPC is a **private, isolated network** in one region that you design and control.
+- **Subnets** divide the VPC's address range and each sit in one **Availability Zone**.
+- **Route tables** decide where traffic goes, and whether a subnet has a route to an **Internet Gateway** is what makes it public or private.
+- **NAT Gateways** give private subnets outbound-only internet access.
+- **Security groups** (stateful, per resource) and **network ACLs** (stateless, per subnet) control what traffic is allowed.
+- A typical design spreads **public and private subnets across multiple AZs** for security and high availability.

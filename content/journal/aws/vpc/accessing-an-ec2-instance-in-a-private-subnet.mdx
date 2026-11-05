@@ -1,0 +1,275 @@
+---
+title: "Accessing an EC2 Instance in a Private Subnet"
+description: "How I reached a private EC2 instance with no public IP using an EC2 Instance Connect Endpoint and a bastion host, then gave it outbound-only internet access with a NAT Gateway."
+date: "2026-05-23"
+order: 5
+tags: ["aws", "vpc", "ec2", "bastion-host", "nat-gateway", "ec2-instance-connect", "lab"]
+---
+
+## Summary
+
+In this lab I launched two EC2 instances in `myfirst-vpc`: a **bastion host** in a public subnet and a **database server** in a private subnet with no public IP. Because the database server couldn't be reached from the internet, I connected to it in two other ways. First, I created an **EC2 Instance Connect Endpoint**, which let me open a terminal to the private instance from the AWS Console. Second, I SSHed into the bastion host and, from there, into the database server over its private IP. The database server also had no internet access of its own, so I created a **NAT Gateway** in the public subnet and routed the private subnets' outbound traffic through it. After that, the database server could reach the internet while still being protected from incoming connections.
+
+## Lab Environment
+
+This lab built on the network from the previous lab.
+
+| Resource | Details |
+| --- | --- |
+| Region | Canada (Central) `ca-central-1` |
+| VPC | `myfirst-vpc` (`192.168.0.0/24`) |
+| `Public-Subnet-1` | `192.168.0.0/26`, `ca-central-1a`, uses `RT-Public` (`0.0.0.0/0` → IGW) |
+| `Private-Subnet-1` | `192.168.0.128/26`, `ca-central-1a`, uses the main route table |
+
+New resources in this lab:
+
+| Resource | Details |
+| --- | --- |
+| `Bastion-Host` | Amazon Linux, `t3.micro`, in `Public-Subnet-1`, public IP enabled, security group `web-server` |
+| `Database-Server` | Amazon Linux, `t3.micro`, in `Private-Subnet-1`, no public IP, security group `database-server` |
+| `web-server` security group | Inbound SSH (TCP 22) from `0.0.0.0/0` |
+| `database-server` security group | Inbound SSH (TCP 22) from `0.0.0.0/0` |
+| EC2 Instance Connect Endpoint | In `Private-Subnet-1`, using the VPC's default security group |
+| NAT Gateway | Zonal, in `Public-Subnet-1`, with a new Elastic IP |
+| Main route table | Added route `0.0.0.0/0` → NAT Gateway |
+
+---
+
+## Part 1: Launching the Bastion Host
+
+A **bastion host** (also called a jump box) is a server in a public subnet that acts as a secure entry point into a private network. I connect to the bastion first, then hop from it to the private servers.
+
+### 1. Configured the instance
+
+In the EC2 console, I clicked **Launch instances** and used these settings:
+
+| Setting | Value |
+| --- | --- |
+| Name | `Bastion-Host` |
+| AMI | Amazon Linux 2023 |
+| Instance type | `t3.micro` |
+| Key pair | My existing key pair |
+| VPC | `myfirst-vpc` |
+| Subnet | `Public-Subnet-1` |
+| Auto-assign public IP | Enable |
+| Security group | New: `web-server`, with inbound SSH (TCP 22) from `0.0.0.0/0` |
+
+I clicked **Launch instance**, waited for it to reach **Running**, and noted its **public IPv4 address**.
+
+### 2. Connected to it from my computer
+
+Before connecting, I made the key file readable only by me, since SSH refuses to use a private key that other users can access:
+
+```bash
+chmod 400 KEY_NAME.pem
+```
+
+Then I connected using the bastion's public IP:
+
+```bash
+ssh -i KEY_NAME.pem ec2-user@BASTION_PUBLIC_IP
+```
+
+The Amazon Linux 2023 prompt appeared, confirming the bastion was reachable from the internet.
+
+---
+
+## Part 2: Launching the Database Server
+
+### 1. Configured the instance
+
+I launched a second instance with these settings:
+
+| Setting | Value |
+| --- | --- |
+| Name | `Database-Server` |
+| AMI | Amazon Linux 2023 |
+| Instance type | `t3.micro` |
+| Key pair | The same key pair as the bastion |
+| VPC | `myfirst-vpc` |
+| Subnet | `Private-Subnet-1` |
+| Auto-assign public IP | **Disable** |
+| Security group | New: `database-server`, with inbound SSH (TCP 22) |
+
+### 2. Verified it had no public IP
+
+After it launched, I opened the instance's **Details** tab. The **Public IPv4 address** field was empty, and only a **private IPv4 address** in the `192.168.0.128/26` range was listed.
+
+With no public IP, and with `Private-Subnet-1` having no route to the Internet Gateway, there was no way to SSH into the database server directly from my computer.
+
+---
+
+## Part 3: Connecting with an EC2 Instance Connect Endpoint
+
+An **EC2 Instance Connect Endpoint** is an AWS-managed entry point placed inside a subnet. It lets me open an SSH session to a private instance through the AWS Console, without a public IP or a bastion host. Instead of relying on network access from the internet, it uses my **AWS account credentials and IAM permissions** to decide who's allowed to connect.
+
+### 1. Created the endpoint
+
+1. In the VPC console, I went to **Endpoints** and clicked **Create endpoint**.
+2. I entered a name and, under **Type**, selected **EC2 Instance Connect Endpoint**.
+3. For **VPC**, I chose `myfirst-vpc`.
+4. For **Security groups**, I chose the VPC's **default** security group.
+5. For **Subnet**, I chose `Private-Subnet-1`.
+6. I clicked **Create endpoint**.
+
+The endpoint started in a **Pending** state. I waited until it changed to **Available**, which took a few minutes.
+
+### 2. Connected to the database server
+
+1. In the EC2 console, I selected `Database-Server` and clicked **Connect**.
+2. I opened the **EC2 Instance Connect** tab and chose **Connect using EC2 Instance Connect Endpoint**, with the option to connect using the **private IP**.
+3. I selected the endpoint I'd just created and clicked **Connect**.
+
+A terminal opened in my browser, logged in as `ec2-user` on the database server. I had connected to a private instance without it ever having a public IP.
+
+---
+
+## Part 4: Connecting Through the Bastion Host
+
+### 1. Copied my key to the bastion
+
+To SSH from the bastion to the database server, the bastion needed the private key too. I exited the bastion back to my computer:
+
+```bash
+exit
+```
+
+Then I used `scp` (secure copy) to copy the key from my computer into the bastion's home directory:
+
+```bash
+scp -i KEY_NAME.pem KEY_NAME.pem ec2-user@BASTION_PUBLIC_IP:/home/ec2-user/
+```
+
+The first `KEY_NAME.pem` is the key used to log in to the bastion, and the second is the file being copied.
+
+### 2. Logged back in to the bastion
+
+```bash
+ssh -i KEY_NAME.pem ec2-user@BASTION_PUBLIC_IP
+```
+
+I checked that the key had arrived and locked down its permissions:
+
+```bash
+pwd
+ls
+chmod 400 KEY_NAME.pem
+```
+
+`pwd` showed `/home/ec2-user`, and `ls` listed the `.pem` file.
+
+### 3. Jumped to the database server
+
+From the bastion, I connected to the database server using its **private IP**:
+
+```bash
+ssh -i KEY_NAME.pem ec2-user@DATABASE_PRIVATE_IP
+```
+
+The connection worked because both instances are in the same VPC. The VPC's `local` route (`192.168.0.0/24` → `local`) let the bastion reach the database server's private address directly, without going through the internet.
+
+### 4. Found the internet problem
+
+On the database server, I ran:
+
+```bash
+ping google.com
+```
+
+It got no replies. The database server was on the main route table, which only had the `local` route, so its traffic had no path out of the VPC. That kept it safe from the internet, but it also meant it couldn't download software updates or reach any outside service.
+
+---
+
+## Part 5: Giving the Private Subnet Outbound Internet Access with a NAT Gateway
+
+A **NAT Gateway** lets instances in a private subnet start connections **out** to the internet, while blocking anything on the internet from starting a connection **in** to them.
+
+### 1. Created the NAT Gateway
+
+1. In the VPC console, I went to **NAT gateways** and clicked **Create NAT gateway**.
+2. I entered a name and chose the **Zonal** availability mode.
+3. For **Subnet**, I chose `Public-Subnet-1`. A NAT Gateway has to live in a **public** subnet, because it needs to reach the internet through the Internet Gateway itself.
+4. I kept **Connectivity type** as **Public** and clicked **Allocate Elastic IP**, which gave the NAT Gateway a static public IP address.
+5. I clicked **Create NAT gateway**.
+
+Its status started as **Pending**, and I waited until it changed to **Available** before using it.
+
+### 2. Routed the private subnets through it
+
+The private subnets used the VPC's main route table, so that's where the new route went.
+
+1. I went to **Route tables**, selected the **main** route table for `myfirst-vpc`, and opened the **Routes** tab.
+2. I clicked **Edit routes**, then **Add route**:
+- **Destination:** `0.0.0.0/0`
+- **Target:** **NAT Gateway** → the NAT Gateway I'd just created
+3. I clicked **Save changes**.
+
+The new route showed **Active**. Any traffic from the private subnets headed outside the VPC would now go to the NAT Gateway, which would forward it to the internet through the Internet Gateway.
+
+### 3. Verified internet access
+
+I went back to the database server and ran:
+
+```bash
+ping google.com
+```
+
+This time it received replies. The database server could reach the internet, but it still had no public IP, so nothing on the internet could connect to it directly.
+
+---
+
+## What I Learned
+
+- A **private** instance has no public IP and sits in a subnet without a route to an Internet Gateway, so it can't be reached directly from the internet.
+- A **bastion host** in a public subnet is a common way to reach private instances. I connect to the bastion over the internet, then to the private instance over the VPC's internal network.
+- An **EC2 Instance Connect Endpoint** gives access to private instances without a bastion or a public IP. Access is controlled by **IAM permissions**, so only users with valid AWS credentials can connect.
+- The **local route** lets every resource in a VPC reach every other resource by private IP, as long as security groups allow it.
+- A **NAT Gateway** gives private instances **outbound-only** internet access. It must be placed in a **public subnet**, uses an **Elastic IP**, and is reached through a `0.0.0.0/0` route in the private subnets' route table.
+- The difference between the two internet routes:
+- **Public route table:** `0.0.0.0/0` → **Internet Gateway** allows traffic in both directions (for instances with public IPs).
+- **Private route table:** `0.0.0.0/0` → **NAT Gateway** allows only connections started from inside.
+- A **zonal** NAT Gateway lives in one Availability Zone. For high availability, each AZ would normally get its own NAT Gateway, with each private subnet routing to the one in its own AZ.
+- A NAT Gateway is a **paid** service, billed for every hour it exists and every GB of data it processes, on top of the Elastic IP.
+
+## Notes
+
+- Copying a private key onto a bastion host works for a lab, but it's a security risk in practice: if the bastion is compromised, the key is too. A safer option is SSH's **jump host** feature, which connects through the bastion without ever copying the key onto it:
+```bash
+ssh -i KEY_NAME.pem -J ec2-user@BASTION_PUBLIC_IP ec2-user@DATABASE_PRIVATE_IP
+  ```
+- Both security groups allowed SSH from `0.0.0.0/0`. In a real setup, the bastion's group would allow SSH only from my own IP, and the database server's group would allow SSH only from the bastion's security group.
+- The `chmod 400` command works in Linux, macOS, and Git Bash. Windows Command Prompt doesn't have it, so on Windows the key's permissions are changed in the file's **Properties** → **Security** settings instead.
+
+---
+
+## Cleanup
+
+The NAT Gateway and Elastic IP were the most important things to delete, because they're billed every hour whether or not anything uses them. I deleted everything from this lab in this order:
+
+### 1. Deleted the NAT Gateway
+
+In the VPC console, I went to **NAT gateways**, selected the NAT Gateway, clicked **Actions** → **Delete NAT gateway**, typed `delete`, and confirmed. I waited until its state changed to **Deleted**, which took a few minutes.
+
+### 2. Released the Elastic IP
+
+Deleting the NAT Gateway doesn't release its Elastic IP, and an unused Elastic IP is still billed. Under **Elastic IPs**, I selected the address that had been allocated for the NAT Gateway, clicked **Actions** → **Release Elastic IP addresses**, and confirmed.
+
+### 3. Removed the NAT route
+
+On the main route table's **Routes** tab, the `0.0.0.0/0` route now showed **Blackhole**, because its target was gone. I clicked **Edit routes**, removed it, and saved, so the main route table went back to having only the `local` route.
+
+### 4. Deleted the EC2 Instance Connect Endpoint
+
+Under **Endpoints**, I selected the EC2 Instance Connect Endpoint, clicked **Actions** → **Delete VPC endpoints**, and confirmed.
+
+### 5. Terminated the instances
+
+In the EC2 console, I selected `Bastion-Host` and `Database-Server` and clicked **Instance state** → **Terminate (delete) instance**. This also deleted their root volumes and released the bastion's public IP.
+
+### 6. Deleted the security groups
+
+Once both instances showed **Terminated**, I went to **Security Groups** and deleted `web-server` and `database-server`.
+
+### 7. Confirmed nothing was left
+
+I checked that **NAT gateways**, **Elastic IPs**, **Endpoints**, and **Instances** didn't list anything from this lab still running. I kept `myfirst-vpc`, its subnets, the Internet Gateway, and `RT-Public`, since they're free and later VPC labs build on them.

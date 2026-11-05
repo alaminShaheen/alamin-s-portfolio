@@ -1,0 +1,174 @@
+---
+title: "Introduction to Amazon EC2"
+description: "An overview of Amazon Elastic Compute Cloud (EC2): what it is, its core building blocks, how it's priced, and the kinds of workloads it's used for."
+date: "2026-05-22"
+order: 0
+tags: ["aws", "ec2", "compute", "cloud", "reference"]
+---
+
+## What Is EC2?
+
+**Amazon EC2 (Elastic Compute Cloud)** is AWS's service for renting virtual servers in the cloud. Each virtual server is called an **instance**. Instead of buying, setting up, and maintaining physical hardware, you launch an instance in a few minutes, choose its operating system and size, use it for as long as you need, and pay only for the time it runs.
+
+The "elastic" part means capacity can grow or shrink with demand. You can launch one instance or hundreds, resize an instance, or shut instances down when they're no longer needed.
+
+EC2 is an example of **Infrastructure as a Service (IaaS)**. AWS manages the physical hardware, data centers, and networking underneath. You manage everything on the instance itself, including the operating system, updates, installed software, and security settings.
+
+---
+
+## Core Building Blocks
+
+### Instances
+
+An **instance** is a single virtual server. It has its own CPU, memory, storage, and network connection, and it runs a full operating system like Amazon Linux, Ubuntu, or Windows Server.
+
+### AMIs (Amazon Machine Images)
+
+An **AMI** is the template an instance is launched from. It contains the operating system and any pre-installed software and configuration. AWS provides ready-made AMIs, the AWS Marketplace offers third-party ones, and you can create **custom AMIs** from your own configured instances to launch identical copies later.
+
+### Instance types
+
+The **instance type** decides how much CPU, memory, storage, and network performance an instance gets. Instance type names follow a pattern:
+
+```
+t3.micro
+│││  └── size (nano, micro, small, medium, large, xlarge, 2xlarge, …)
+││└──── generation (higher is newer)
+│└───── (optional extra letters for features, e.g. "g" for Graviton processors)
+└────── family
+```
+
+Common families:
+
+| Family | Optimized for | Example uses |
+| --- | --- | --- |
+| **T** (e.g. `t3`) | Burstable general purpose: low baseline CPU that can burst when needed | Small websites, dev and test servers, labs |
+| **M** (e.g. `m7i`) | Balanced general purpose: even mix of CPU and memory | Application servers, mid-size databases |
+| **C** (e.g. `c7i`) | Compute: high CPU relative to memory | Batch processing, video encoding, game servers |
+| **R** (e.g. `r7i`) | Memory: large amounts of RAM | In-memory caches, large databases, analytics |
+| **G / P** | Accelerated computing: GPUs | Machine learning, graphics rendering |
+| **I** (e.g. `i4i`) | Storage: very fast local disks | High-performance databases, data warehousing |
+
+### Key pairs
+
+A **key pair** is how you prove your identity when connecting. AWS keeps the **public key** on the instance, and you keep the **private key** (a `.pem` or `.ppk` file). Linux instances use it to log in over **SSH**. Windows instances use it to decrypt the initial **Administrator password** for **RDP**.
+
+### Security groups
+
+A **security group** is a virtual firewall attached to an instance. **Inbound rules** control which traffic can reach the instance, such as SSH on port 22, RDP on port 3389, or HTTP on port 80. By default, all inbound traffic is blocked and all outbound traffic is allowed.
+
+### Storage
+
+| Type | What it is | Survives stop/start? |
+| --- | --- | --- |
+| **EBS volume** | Network-attached virtual disk. The root volume holding the OS is usually EBS. Extra volumes can be attached, resized, and backed up with snapshots. | Yes |
+| **Instance store** | Disks physically attached to the host machine, available on some instance types. Very fast, but temporary. | No, data is lost when the instance stops or terminates |
+| **EFS** | Shared network file system that many Linux instances can mount at once | Yes, it's independent of any instance |
+
+### Networking
+
+Every instance launches into a **subnet** inside a [**VPC**](/journal/aws/vpc/introduction-to-amazon-vpc), which places it in a specific **Availability Zone**. Each instance gets a **private IP** for communication inside the [VPC](/journal/aws/vpc/introduction-to-amazon-vpc), and optionally a **public IP** for internet access. A public IP changes if the instance is stopped and started. An **Elastic IP** is a static public IP that stays the same.
+
+### User data
+
+**User data** is a script you can provide at launch that runs automatically the first time the instance boots. It's commonly used to install software, apply updates, or configure the server without logging in manually.
+
+---
+
+## Instance Lifecycle
+
+| State | What's happening | Billed for compute? |
+| --- | --- | --- |
+| **Pending** | The instance is starting up | No |
+| **Running** | The instance is on and usable | Yes |
+| **Stopping** | The instance is shutting down | No (except when hibernating) |
+| **Stopped** | The instance is off, but its EBS volumes are kept | No, but EBS storage is still billed |
+| **Terminated** | The instance is permanently deleted | No |
+
+**Stopping** is like turning a computer off: it can be started again later. **Terminating** is permanent. By default, the root EBS volume is deleted on termination, but additional volumes attached after launch are not.
+
+---
+
+## Pricing Models
+
+| Model | How it works | Best for |
+| --- | --- | --- |
+| **On-Demand** | Pay per second (Linux) or per hour, with no commitment | Short-term, unpredictable, or new workloads; labs and testing |
+| **Savings Plans** | Commit to a set amount of compute spending per hour for 1 or 3 years in exchange for a large discount | Steady, long-running workloads |
+| **Reserved Instances** | Commit to a specific instance type in a region for 1 or 3 years in exchange for a discount | Predictable workloads that won't change instance type |
+| **Spot Instances** | Use AWS's spare capacity at a steep discount, but AWS can reclaim the instance with a 2-minute warning | Flexible, interruption-tolerant work like batch jobs and data processing |
+| **Dedicated Hosts / Instances** | Run on hardware reserved only for your account | Licensing requirements or compliance rules that forbid shared hardware |
+
+Besides the instance itself, other things add to the bill: EBS volumes and snapshots, public IPv4 addresses, and data transferred out to the internet.
+
+---
+
+## Common Use Cases
+
+### Hosting websites and web applications
+
+EC2 can run web servers like Apache, Nginx, or IIS to host websites, APIs, and full web applications. For high availability, instances can run in several Availability Zones behind a **load balancer**.
+
+### Application and backend servers
+
+Business applications, internal tools, and backend services can run on EC2, often in **private subnets** where they're reachable only from other parts of the system and not directly from the internet.
+
+### Databases
+
+Databases like MySQL, PostgreSQL, or MongoDB can be installed directly on EC2 when full control over the configuration is needed. AWS also offers managed database services such as Amazon RDS, which take care of backups, patching, and failover.
+
+### Development and testing environments
+
+Developers can quickly launch servers that match production, test changes, and terminate them afterward, paying only for the hours used.
+
+### Batch processing and data analysis
+
+Large jobs like processing logs, transforming data, or running reports can be spread across many instances, often using **Spot Instances** to cut costs.
+
+### Machine learning and high-performance computing
+
+GPU instances train and run machine learning models, and compute-optimized instances handle scientific simulations, financial modeling, and rendering.
+
+### Game servers
+
+Multiplayer game servers can run on EC2 in regions close to players to reduce lag, scaling up during busy times and down when traffic drops.
+
+### Lift-and-shift migrations
+
+Companies moving to the cloud often start by moving their existing on-premises servers onto EC2 with few or no changes, since EC2 instances behave much like traditional servers.
+
+### Remote desktops and Windows workloads
+
+Windows Server instances can host Windows-only applications and be accessed over **RDP**, as in a remote desktop setup.
+
+---
+
+## Scaling and High Availability
+
+- **Auto Scaling groups** automatically add instances when demand rises and remove them when it falls, and replace instances that fail health checks.
+- **Elastic Load Balancing** spreads incoming traffic across multiple instances, so no single instance is overloaded and one failure doesn't take the application down.
+- Running instances in **multiple Availability Zones** protects against a problem in a single data center.
+
+---
+
+## When EC2 Might Not Be the Best Fit
+
+Because EC2 gives full control over the server, it also comes with the responsibility of managing it. Other AWS services can be simpler for some workloads:
+
+| Need | Alternative |
+| --- | --- |
+| Run short pieces of code in response to events, without managing servers | **AWS Lambda** |
+| Run containerized applications | **Amazon ECS** or **Amazon EKS** (which can run on EC2 or on AWS Fargate) |
+| Deploy a web application without configuring servers | **AWS Elastic Beanstalk** |
+| Run a relational database without managing it | **Amazon RDS** or **Amazon Aurora** |
+| Host a static website | **Amazon S3** with **Amazon CloudFront** |
+
+---
+
+## Key Takeaways
+
+- EC2 provides **virtual servers** that can be launched in minutes and paid for only while they run.
+- An instance is defined by its **AMI** (what's installed), **instance type** (how powerful it is), **storage**, **network placement**, and **security group** (what traffic it allows).
+- **Stopping** an instance pauses compute charges but keeps its storage, while **terminating** deletes it permanently.
+- Choosing the right **pricing model** can significantly lower costs for long-running or flexible workloads.
+- EC2 is the most flexible way to run workloads on AWS, which makes it a good fit when full control over the server is needed.
